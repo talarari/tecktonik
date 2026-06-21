@@ -329,10 +329,10 @@
     return Math.max(0.85, TRAVEL_MAX - elapsed * 0.017); // notes speed up
   }
   function hypeDrainRate() {
-    return 1.2 + elapsed * 0.03;                    // drain accelerates
+    return 1.5 + elapsed * 0.045;                   // drain accelerates hard
   }
   function hypeGainMult() {
-    return Math.max(0.22, 1 - elapsed * 0.006);     // hits give less over time
+    return Math.max(0.15, 1 - elapsed * 0.011);     // hits give much less over time
   }
 
   // Stream notes a TRAVEL ahead of the current audio time so each one falls
@@ -449,7 +449,7 @@
     const mult = 1 + Math.floor(combo / 10) * 0.5;
     score += Math.round(gain * mult);
     maxCombo = Math.max(maxCombo, combo);
-    hype = Math.min(100, hype + (quality === 2 ? 4.5 : 3.0) * hypeGainMult());
+    hype = Math.min(100, hype + (quality === 2 ? 3.5 : 2.2) * hypeGainMult());
     comboFlash = 1;
     hitSfx(quality);
     dancer.poke(quality);
@@ -1200,8 +1200,8 @@
       }
 
       if (breakActive) {
-        // he solos: partial hype top-up (not a full reset), no drain
-        hype = Math.min(100, hype + dt * 5);
+        // he solos: small hype top-up (not a full reset), no drain
+        hype = Math.min(100, hype + dt * 4);
         crowdHype += (100 - crowdHype) * 0.06;
         const beat = Math.floor((AC.currentTime - audioStart) / SPB);
         if (beat !== breakBeat) {
@@ -1328,7 +1328,7 @@
     document.getElementById('title').classList.add('hidden');
     document.getElementById('over').classList.add('hidden');
     notes = []; particles = []; rings = []; popups = []; spawnedSteps.clear();
-    score = 0; combo = 0; maxCombo = 0; hype = 70; elapsed = 0; shake = 0; crowdHype = 0;
+    score = 0; combo = 0; maxCombo = 0; hype = 60; elapsed = 0; shake = 0; crowdHype = 0;
     dancer.pose = 0; dancer.energy = 0; dancer.pop = 0; dancer.flash = 0; lastNoteLane = -1;
     breakActive = false; breakBeat = -1; nextBreakScore = 1500; breakGap = 6000;
     state = 'playing';
