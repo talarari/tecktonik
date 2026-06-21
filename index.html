@@ -306,8 +306,9 @@
   let score = 0, combo = 0, maxCombo = 0, hype = 60; // hype 0..100
   let best = +(localStorage.getItem('ppdo_best') || 0);
   let elapsed = 0;                // seconds since start
-  // "Showtime" dance break: notes clear out and he solos for a few seconds
-  let breakActive = false, breakEnd = 0, breakBeat = -1, nextBreakScore = 2000;
+  // "Showtime" dance break: notes clear out and he solos for a few seconds.
+  // First one comes early to show it off, then they get progressively rarer.
+  let breakActive = false, breakEnd = 0, breakBeat = -1, nextBreakScore = 1500, breakGap = 6000;
   let lastTime = 0;
   let shake = 0;
   let crowdHype = 0;              // smoothed visual hype
@@ -1155,7 +1156,8 @@
       // trigger a showtime dance break once you cross a score milestone
       if (!breakActive && !counting && score >= nextBreakScore) {
         startBreak();
-        nextBreakScore += 3000;
+        nextBreakScore += breakGap;
+        breakGap = Math.round(breakGap * 1.6);   // each break gets rarer
       }
 
       if (breakActive) {
@@ -1282,7 +1284,7 @@
     notes = []; particles = []; rings = []; popups = []; spawnedSteps.clear();
     score = 0; combo = 0; maxCombo = 0; hype = 70; elapsed = 0; shake = 0; crowdHype = 0;
     dancer.pose = 0; dancer.energy = 0; dancer.pop = 0; dancer.flash = 0; lastNoteLane = -1;
-    breakActive = false; breakBeat = -1; nextBreakScore = 2000;
+    breakActive = false; breakBeat = -1; nextBreakScore = 1500; breakGap = 6000;
     state = 'playing';
     // start groove
     beatIndex = 0;
