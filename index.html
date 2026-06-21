@@ -286,8 +286,9 @@
   const LANES = 4;
   const laneColors = ['#ff5fa8', '#ffd34d', '#5fd0ff', '#9bff6b'];
   const laneGlow   = ['#ff9ccb', '#ffe79a', '#aee8ff', '#c8ffae'];
-  const HIT_Y = H - 150;          // y of the hit line
-  const SPAWN_Y = 360;            // y where notes appear
+  const HIT_Y = H - 130;          // y of the hit line (low, near the dancer's feet)
+  const SPAWN_Y = 430;            // horizon / waterline / top of the play lanes
+  const NOTE_TOP = 96;            // y where falling notes first appear (up high)
   const TRAVEL = 2.15;            // seconds a note takes to fall (reaction time)
 
   // Note generation runs on its own clock, a full TRAVEL ahead of the audio
@@ -356,14 +357,13 @@
   }
 
   function addNote(lane, hitTime) {
-    notes.push({ lane, hitTime, judged: false, y: SPAWN_Y, scale: 0, dead: false });
+    notes.push({ lane, hitTime, judged: false, y: NOTE_TOP, scale: 0, dead: false });
   }
 
-  // Map an AC time to the note's screen position.
+  // Map an AC time to the note's screen position (falls from NOTE_TOP to HIT_Y).
   function noteY(n, nowAC) {
     const dt = n.hitTime - nowAC;     // >0 means still falling
-    const p = 1 - dt / TRAVEL;        // 0 at spawn-ish, 1 at hit line
-    return SPAWN_Y + (HIT_Y - SPAWN_Y) * (1 - dt / TRAVEL);
+    return NOTE_TOP + (HIT_Y - NOTE_TOP) * (1 - dt / TRAVEL);
   }
 
   // ============================ INPUT =====================================
@@ -514,50 +514,43 @@
     sun.addColorStop(1, 'rgba(255,250,225,0)');
     ctx.fillStyle = sun; ctx.fillRect(120, 0, W - 120, 220);
 
-    // Distant smaller palms (parallax, behind everything)
-    drawPalm(48, 196, 0.62, t, 1.4, false);
-    drawPalm(348, 188, 0.66, t, 2.6, false);
-
+    // Palms rising from the horizon, framing the hero
+    drawPalm(38, SPAWN_Y, 0.60, t, 1.4, false);
+    drawPalm(354, SPAWN_Y, 0.64, t, 2.6, false);
     // Hero palm — tall, centred behind the dancer (like the source)
-    drawPalm(W / 2 + 6, 250, 1.18, t, 0.0, true);
+    drawPalm(W / 2 + 8, SPAWN_Y, 1.34, t, 0.0, true);
 
-    // Warm cabana/club band on the horizon
-    const band = ctx.createLinearGradient(0, 286, 0, SPAWN_Y);
+    // Warm cabana/club band along the waterline
+    const band = ctx.createLinearGradient(0, SPAWN_Y - 40, 0, SPAWN_Y);
     band.addColorStop(0, '#e8d6b8');
     band.addColorStop(1, '#cbb48f');
     ctx.fillStyle = band;
-    ctx.fillRect(0, 300, W, SPAWN_Y - 300 + 4);
+    ctx.fillRect(0, SPAWN_Y - 34, W, 38);
     // distant building blocks
-    ctx.fillStyle = 'rgba(210,194,164,0.9)';
-    ctx.fillRect(0, 292, 70, 16); ctx.fillRect(300, 290, 90, 18);
-    ctx.fillStyle = 'rgba(150,120,90,0.25)';
-    ctx.fillRect(0, 305, W, 2);
+    ctx.fillStyle = 'rgba(208,192,162,0.9)';
+    ctx.fillRect(0, SPAWN_Y - 44, 76, 14); ctx.fillRect(298, SPAWN_Y - 46, 94, 16);
 
     // Cabana umbrellas (cream w/ red scalloped trim)
-    drawUmbrella(96, 318, 0.92, t, 0.4);
-    drawUmbrella(300, 314, 1.04, t, 1.1);
-    drawUmbrella(W / 2 + 4, 308, 0.8, t, 2.0);
+    drawUmbrella(64, SPAWN_Y - 24, 0.78, t, 0.4);
+    drawUmbrella(326, SPAWN_Y - 26, 0.84, t, 1.1);
 
     // Crowd dancing behind the hero
     drawCrowd(t);
 
-    // --- Pool below the stage (playfield backdrop) ---
-    // deck lip
+    // --- Pool below the waterline (playfield backdrop) ---
     ctx.fillStyle = '#d9c39c';
-    ctx.fillRect(0, SPAWN_Y - 6, W, 10);
-    ctx.fillStyle = 'rgba(120,95,60,0.18)';
-    ctx.fillRect(0, SPAWN_Y + 3, W, 2);
+    ctx.fillRect(0, SPAWN_Y - 6, W, 9);
     const deck = ctx.createLinearGradient(0, SPAWN_Y, 0, H);
     deck.addColorStop(0, '#34c2e6');
-    deck.addColorStop(0.28, '#1391c6');
+    deck.addColorStop(0.30, '#1391c6');
     deck.addColorStop(1, '#06375a');
     ctx.fillStyle = deck;
-    ctx.fillRect(0, SPAWN_Y + 4, W, H - SPAWN_Y);
+    ctx.fillRect(0, SPAWN_Y + 3, W, H - SPAWN_Y);
 
     // shimmering water lines
     ctx.globalAlpha = 0.16; ctx.strokeStyle = '#d4f4ff'; ctx.lineWidth = 2;
-    for (let i = 0; i < 6; i++) {
-      const yy = SPAWN_Y + 16 + i * 16;
+    for (let i = 0; i < 7; i++) {
+      const yy = SPAWN_Y + 16 + i * 18;
       ctx.beginPath();
       for (let x = 0; x <= W; x += 12) {
         const yo = Math.sin((x * 0.05) + t * 2 + i) * 2.4;
@@ -567,7 +560,7 @@
     }
     ctx.globalAlpha = 1;
 
-    // soft sunny warm overlay over the whole scene
+    // soft sunny warm overlay over the sky/scene
     ctx.globalAlpha = 0.06; ctx.fillStyle = '#ffdf9a';
     ctx.fillRect(0, 0, W, SPAWN_Y); ctx.globalAlpha = 1;
   }
@@ -670,9 +663,9 @@
     const skins = ['#cfa074', '#e3bd92', '#b07f52', '#dcb285'];
     const tops  = ['#1c1c22', '#e35a8c', '#2fb8a8', '#f0c14b', '#1c1c22', '#d84f7a'];
     const hairs = ['#3a2a1a', '#6b4a2a', '#2a2a2a', '#8a5a2a'];
-    const base = SPAWN_Y - 4;
-    // x, scale  (flanking the hero, smaller = further)
-    const ppl = [[24,0.82],[58,0.9],[96,0.82],[300,0.86],[336,0.92],[366,0.8]];
+    const base = SPAWN_Y - 2;
+    // x, scale  (flanking the hero in the distance — smaller = further)
+    const ppl = [[22,0.6],[54,0.68],[90,0.6],[304,0.64],[340,0.7],[370,0.6]];
     for (let i = 0; i < ppl.length; i++) {
       const [x, sc] = ppl[i];
       const sk = skins[i % skins.length], top = tops[i % tops.length], hair = hairs[i % hairs.length];
@@ -712,7 +705,7 @@
   const DBG_POSE = /[#&?]pose=(\d+)/.exec(location.hash);
   function drawDancer(t) {
     const cx = W / 2;
-    const groundY = SPAWN_Y + 46;
+    const groundY = HIT_Y - 46;     // dance right above the catch line
     if (DBG_POSE) { dancer.pose = (+DBG_POSE[1]) % DANCE_POSES.length; dancer.energy = 1; }
     // smooth interpolate toward current pose
     const P = DANCE_POSES[dancer.pose];
@@ -732,7 +725,7 @@
     ctx.save();
     ctx.translate(cx, groundY - bop);
     ctx.rotate(sway);
-    ctx.scale(1.5, 1.5);            // hero presence — big and close
+    ctx.scale(1.4, 1.4);            // hero presence — big and close
 
     const skin = '#dca067', skinSh = '#c0824b', skinHi = '#ecbb86';
     const shirt = '#f491b8', shirtSh = '#dd6fa0', shirtHi = '#ffb7d4';
@@ -924,42 +917,50 @@
   }
 
   // ============================ PLAYFIELD =================================
-  function drawField(nowAC) {
+  // Lane structure — drawn BEHIND the dancer so he isn't striped over.
+  function drawLanesBack() {
     const lw = laneWidth();
-    // lane backgrounds
     for (let l = 0; l < LANES; l++) {
       const x = 12 + lw * l;
-      ctx.fillStyle = l % 2 ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.10)';
+      ctx.fillStyle = l % 2 ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.08)';
       ctx.fillRect(x, SPAWN_Y, lw, H - SPAWN_Y);
-      // lane flash on tap
+      ctx.strokeStyle = 'rgba(255,255,255,0.10)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(x, SPAWN_Y); ctx.lineTo(x, H); ctx.stroke();
+    }
+    ctx.strokeStyle = 'rgba(255,255,255,0.10)';
+    ctx.beginPath(); ctx.moveTo(12 + lw * LANES, SPAWN_Y); ctx.lineTo(12 + lw * LANES, H); ctx.stroke();
+  }
+
+  // Hit line, target rings, lane flashes and the falling notes — drawn IN
+  // FRONT of the dancer so the action sits right where he's dancing.
+  function drawPlay(nowAC) {
+    const lw = laneWidth();
+    // lane flash on tap (bright pulse up the lane)
+    for (let l = 0; l < LANES; l++) {
       if (laneFlash[l] > 0) {
-        ctx.globalAlpha = laneFlash[l] * 0.5;
-        const g = ctx.createLinearGradient(0, HIT_Y, 0, SPAWN_Y);
+        const x = 12 + lw * l;
+        ctx.globalAlpha = laneFlash[l] * 0.45;
+        const g = ctx.createLinearGradient(0, HIT_Y, 0, HIT_Y - 180);
         g.addColorStop(0, laneColors[l]); g.addColorStop(1, 'transparent');
-        ctx.fillStyle = g; ctx.fillRect(x, SPAWN_Y, lw, H - SPAWN_Y);
+        ctx.fillStyle = g; ctx.fillRect(x, HIT_Y - 180, lw, 180);
         ctx.globalAlpha = 1;
         laneFlash[l] = Math.max(0, laneFlash[l] - 0.08);
       }
-      // separators
-      ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(x, SPAWN_Y); ctx.lineTo(x, H); ctx.stroke();
     }
-    ctx.strokeStyle = 'rgba(255,255,255,0.12)';
-    ctx.beginPath(); ctx.moveTo(12 + lw * LANES, SPAWN_Y); ctx.lineTo(12 + lw * LANES, H); ctx.stroke();
 
     // HIT LINE with glow
     ctx.save();
     ctx.shadowColor = '#fff'; ctx.shadowBlur = 16;
-    ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(255,255,255,0.92)'; ctx.lineWidth = 3;
     ctx.beginPath(); ctx.moveTo(12, HIT_Y); ctx.lineTo(12 + lw * LANES, HIT_Y); ctx.stroke();
     ctx.restore();
     // hit target rings
     for (let l = 0; l < LANES; l++) {
       const x = laneX(l);
       ctx.strokeStyle = laneColors[l]; ctx.lineWidth = 3;
-      ctx.globalAlpha = 0.9;
+      ctx.globalAlpha = 0.95;
       ctx.beginPath(); ctx.arc(x, HIT_Y, 24, 0, 7); ctx.stroke();
-      ctx.globalAlpha = 0.18; ctx.fillStyle = laneColors[l];
+      ctx.globalAlpha = 0.2; ctx.fillStyle = laneColors[l];
       ctx.beginPath(); ctx.arc(x, HIT_Y, 22, 0, 7); ctx.fill();
       ctx.globalAlpha = 1;
     }
@@ -1141,10 +1142,11 @@
     ctx.translate(sx, sy);
     ctx.clearRect(-10, -10, W + 20, H + 20);
 
-    drawBackground(tSec);
-    drawDancer(tSec);
     const nowAC = AC ? AC.currentTime : 0;
-    if (state !== 'title') drawField(nowAC);
+    drawBackground(tSec);
+    if (state !== 'title') drawLanesBack();   // lane structure behind him
+    drawDancer(tSec);
+    if (state !== 'title') drawPlay(nowAC);    // notes + catch line in front
 
     updateParticles(dt);
     drawParticles();
@@ -1165,7 +1167,7 @@
     const frac = beatsLeft - Math.floor(beatsLeft); // 1 -> 0 within the beat
     const pop = 1 + (1 - frac) * 0.6;
     ctx.save();
-    ctx.translate(W / 2, SPAWN_Y - 70);
+    ctx.translate(W / 2, 210);
     ctx.globalAlpha = Math.min(1, frac + 0.2);
     ctx.scale(pop, pop);
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
