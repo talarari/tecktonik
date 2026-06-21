@@ -1,0 +1,1003 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="theme-color" content="#1099d6" />
+<title>Pool Party Dance-Off</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    width: 100%; height: 100%; overflow: hidden;
+    background: #061018;
+    font-family: 'Trebuchet MS', 'Segoe UI', system-ui, sans-serif;
+    touch-action: none; user-select: none; -webkit-user-select: none;
+  }
+  #wrap {
+    position: fixed; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  canvas { display: block; touch-action: none; }
+  /* Overlays */
+  .screen {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; color: #fff; z-index: 10;
+    padding: 24px; gap: 18px;
+    background: radial-gradient(120% 80% at 50% 0%, rgba(255,120,180,0.25), rgba(6,16,24,0.78) 70%);
+    backdrop-filter: blur(2px);
+  }
+  .hidden { display: none !important; }
+  h1 {
+    font-size: clamp(30px, 9vw, 56px); line-height: 1.0; font-weight: 900;
+    letter-spacing: 1px;
+    background: linear-gradient(180deg,#fff,#ffd6ec 45%,#ff5fa8);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    text-shadow: 0 4px 24px rgba(255,95,168,0.5);
+    transform: rotate(-3deg);
+  }
+  .tag { font-size: clamp(13px,4vw,18px); opacity: .9; font-weight: 600; letter-spacing:.5px;}
+  .btn {
+    pointer-events: auto; cursor: pointer;
+    font-size: clamp(18px,6vw,26px); font-weight: 900;
+    color: #2a0a18;
+    padding: 16px 40px; border: none; border-radius: 999px;
+    background: linear-gradient(180deg,#fff3,#fff0), linear-gradient(180deg,#ffd34d,#ff7ac0);
+    box-shadow: 0 8px 0 #c2386f, 0 14px 30px rgba(0,0,0,.45);
+    transform: translateY(0); transition: transform .06s, box-shadow .06s;
+  }
+  .btn:active { transform: translateY(6px); box-shadow: 0 2px 0 #c2386f, 0 6px 16px rgba(0,0,0,.45); }
+  .how {
+    font-size: clamp(12px,3.6vw,15px); opacity:.85; max-width: 320px; line-height:1.5;
+    background: rgba(0,0,0,.28); padding:14px 18px; border-radius:16px;
+  }
+  .big { font-size: clamp(40px,13vw,72px); font-weight:900; margin:4px 0; }
+  .small { font-size: clamp(13px,4vw,17px); opacity:.85; }
+  .credit { position:absolute; bottom:10px; font-size:11px; opacity:.5; }
+  .pulse { animation: pulse 1.1s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.06)} }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="game"></canvas>
+
+  <!-- TITLE -->
+  <div id="title" class="screen">
+    <div class="tag">🌴 LAS VEGAS POOL CLUB 🌴</div>
+    <h1>POOL PARTY<br>DANCE-OFF</h1>
+    <div class="how">
+      Tap the falling beats when they hit the glowing line.<br>
+      Keep the combo alive to make him <b>go off</b> 🕺<br>
+      Don't let the HYPE meter empty out!
+    </div>
+    <button class="btn pulse" id="startBtn">▶ START DANCING</button>
+    <div class="tag" style="opacity:.7">Best: <span id="titleBest">0</span></div>
+    <div class="credit">Tap anywhere · headphones on 🎧</div>
+  </div>
+
+  <!-- GAME OVER -->
+  <div id="over" class="screen hidden">
+    <div class="tag">THE BEAT DROPPED OUT 💤</div>
+    <div class="small">SCORE</div>
+    <div class="big" id="finalScore">0</div>
+    <div class="small">Max Combo <b id="finalCombo">0</b> · Best <b id="finalBest">0</b></div>
+    <div id="newBest" class="tag hidden" style="color:#ffd34d;font-weight:900">⭐ NEW BEST! ⭐</div>
+    <button class="btn" id="againBtn">↻ DANCE AGAIN</button>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* =========================================================================
+   POOL PARTY DANCE-OFF — a mobile rhythm/dance tap game
+   Inspired by the source clip: a guy in an open pink shirt dancing at a
+   Vegas pool party. Tap the falling beats; he busts a move on every hit.
+   Single-file, no external assets. Audio synthesized via WebAudio.
+   ========================================================================= */
+
+(function () {
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+
+  // ---- Logical resolution (portrait). We scale to fit the screen. ----
+  const W = 390, H = 780;
+  let scale = 1, offX = 0, offY = 0, dpr = 1;
+
+  function resize() {
+    const vw = window.innerWidth, vh = window.innerHeight;
+    dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+    scale = Math.min(vw / W, vh / H);
+    const cw = Math.round(W * scale), ch = Math.round(H * scale);
+    canvas.style.width = cw + 'px';
+    canvas.style.height = ch + 'px';
+    canvas.width = Math.round(cw * dpr);
+    canvas.height = Math.round(ch * dpr);
+    offX = 0; offY = 0;
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // ============================ AUDIO =====================================
+  let AC = null, master = null, musicGain = null;
+  const BPM = 124;
+  const SPB = 60 / BPM;            // seconds per beat
+  let audioStart = 0;             // AC.currentTime when song started
+  let schedAhead = 0.12;          // scheduler lookahead (s)
+  let nextNoteTime = 0;           // next scheduled beat time
+  let beatIndex = 0;              // running 16th-note index
+  let musicTimer = null;
+
+  function initAudio() {
+    if (AC) { if (AC.state === 'suspended') AC.resume(); return; }
+    AC = new (window.AudioContext || window.webkitAudioContext)();
+    master = AC.createGain(); master.gain.value = 0.9; master.connect(AC.destination);
+    musicGain = AC.createGain(); musicGain.gain.value = 0.85; musicGain.connect(master);
+    // shared noise buffer for hats/claps
+    noiseBuf = AC.createBuffer(1, AC.sampleRate * 0.4, AC.sampleRate);
+    const d = noiseBuf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  }
+  let noiseBuf = null;
+
+  function kick(t) {
+    const o = AC.createOscillator(), g = AC.createGain();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(140, t);
+    o.frequency.exponentialRampToValueAtTime(45, t + 0.13);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(1.0, t + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+    o.connect(g); g.connect(musicGain); o.start(t); o.stop(t + 0.24);
+  }
+  function hat(t, open) {
+    const s = AC.createBufferSource(); s.buffer = noiseBuf;
+    const hp = AC.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 7000;
+    const g = AC.createGain();
+    const dur = open ? 0.12 : 0.035;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(open ? 0.35 : 0.28, t + 0.003);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    s.connect(hp); hp.connect(g); g.connect(musicGain); s.start(t); s.stop(t + dur + 0.02);
+  }
+  function snare(t) {
+    const s = AC.createBufferSource(); s.buffer = noiseBuf;
+    const bp = AC.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1800; bp.Q.value = 0.7;
+    const g = AC.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.5, t + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+    s.connect(bp); bp.connect(g); g.connect(musicGain); s.start(t); s.stop(t + 0.2);
+  }
+  function bass(t, freq, dur) {
+    const o = AC.createOscillator(), g = AC.createGain();
+    o.type = 'sawtooth'; o.frequency.value = freq;
+    const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 520; lp.Q.value = 6;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.32, t + 0.02);
+    g.gain.setValueAtTime(0.32, t + dur * 0.7);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(lp); lp.connect(g); g.connect(musicGain); o.start(t); o.stop(t + dur + 0.02);
+  }
+  function lead(t, freq, dur) {
+    const o = AC.createOscillator(), o2 = AC.createOscillator(), g = AC.createGain();
+    o.type = 'square'; o2.type = 'sawtooth';
+    o.frequency.value = freq; o2.frequency.value = freq * 1.005;
+    const lp = AC.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2600;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.16, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(lp); o2.connect(lp); lp.connect(g); g.connect(musicGain);
+    o.start(t); o2.start(t); o.stop(t + dur + 0.02); o2.stop(t + dur + 0.02);
+  }
+  // SFX for hits
+  function hitSfx(quality) {
+    if (!AC) return;
+    const t = AC.currentTime;
+    const o = AC.createOscillator(), g = AC.createGain();
+    o.type = 'triangle';
+    const base = quality === 2 ? 880 : 620;
+    o.frequency.setValueAtTime(base, t);
+    o.frequency.exponentialRampToValueAtTime(base * 1.5, t + 0.08);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.25, t + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.14);
+    o.connect(g); g.connect(master); o.start(t); o.stop(t + 0.16);
+  }
+  function missSfx() {
+    if (!AC) return;
+    const t = AC.currentTime;
+    const o = AC.createOscillator(), g = AC.createGain();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(200, t);
+    o.frequency.exponentialRampToValueAtTime(80, t + 0.18);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.18, t + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+    o.connect(g); g.connect(master); o.start(t); o.stop(t + 0.22);
+  }
+
+  // Bass line (root notes per bar) — simple house progression
+  const BASS_SEQ = [55.00, 55.00, 73.42, 65.41]; // A1 A1 D2 C2-ish, looped per bar
+  const LEAD_SEQ = [ // 16-step lead riff (Hz, 0 = rest), pentatonic-ish
+    440,0,0,523,0,587,0,0, 440,0,392,0,0,330,0,0
+  ];
+
+  // The audio scheduler: lays down the groove on a 16th grid.
+  function scheduleStep(step, t) {
+    const six = step % 16;         // step within bar
+    const bar = Math.floor(step / 16);
+    // KICK on every quarter (four-on-the-floor)
+    if (six % 4 === 0) kick(t);
+    // SNARE/CLAP on beats 2 and 4
+    if (six === 4 || six === 12) snare(t);
+    // HATS on every 8th, open on offbeats
+    if (six % 2 === 0) hat(t, false);
+    else hat(t, (six % 4 === 3));
+    // BASS — note per beat, octave bounce on 8ths
+    if (six % 4 === 0) {
+      const root = BASS_SEQ[bar % BASS_SEQ.length];
+      bass(t, root, SPB * 0.9);
+    } else if (six % 2 === 0) {
+      const root = BASS_SEQ[bar % BASS_SEQ.length];
+      bass(t, root * 2, SPB * 0.45);
+    }
+    // LEAD riff — only after the intro builds (bar >= 2) for a "drop" feel
+    if (bar % 8 >= 2) {
+      const f = LEAD_SEQ[six];
+      if (f) lead(t, f * (bar % 8 >= 6 ? 2 : 1), SPB * 0.5);
+    }
+  }
+
+  function musicScheduler() {
+    if (!AC) return;
+    while (nextNoteTime < AC.currentTime + schedAhead) {
+      scheduleStep(beatIndex, nextNoteTime);
+      // hand the beat grid to the gameplay note-spawner
+      onBeatScheduled(beatIndex, nextNoteTime);
+      nextNoteTime += SPB / 4;   // 16th notes
+      beatIndex++;
+    }
+  }
+
+  // ============================ GAME STATE ================================
+  const LANES = 4;
+  const laneColors = ['#ff5fa8', '#ffd34d', '#5fd0ff', '#9bff6b'];
+  const laneGlow   = ['#ff9ccb', '#ffe79a', '#aee8ff', '#c8ffae'];
+  const HIT_Y = H - 150;          // y of the hit line
+  const SPAWN_Y = 360;            // y where notes appear
+  const TRAVEL = 1.45;            // seconds a note takes to fall
+
+  let state = 'title';            // title | playing | over
+  let notes = [];                 // active falling notes
+  let particles = [];
+  let popups = [];                // score popups / judgements
+
+  let score = 0, combo = 0, maxCombo = 0, hype = 60; // hype 0..100
+  let best = +(localStorage.getItem('ppdo_best') || 0);
+  let elapsed = 0;                // seconds since start
+  let lastTime = 0;
+  let shake = 0;
+  let crowdHype = 0;              // smoothed visual hype
+  let comboFlash = 0;
+
+  // Spawn bookkeeping
+  let spawnedSteps = new Set();
+
+  document.getElementById('titleBest').textContent = best;
+
+  // Difficulty curve: notes-per-step density grows over time.
+  function densityAt(sec) {
+    return Math.min(0.85, 0.28 + sec * 0.006);
+  }
+
+  // Decide if a beat-step should carry a note, and which lane.
+  // Called when the scheduler lays a 16th step; we look ahead so the note
+  // reaches HIT_Y exactly at audio time `t`.
+  function onBeatScheduled(step, t) {
+    if (state !== 'playing') return;
+    const six = step % 16;
+    // Always place notes on strong beats; fill with offbeats by density.
+    const onQuarter = (six % 4 === 0);
+    const onEighth = (six % 2 === 0);
+    let place = false;
+    if (onQuarter) place = true;
+    else if (onEighth && Math.random() < densityAt(elapsed) * 0.8) place = true;
+    else if (Math.random() < densityAt(elapsed) * 0.35) place = true;
+    if (!place) return;
+    if (spawnedSteps.has(step)) return;
+    spawnedSteps.add(step);
+
+    // Choose lane(s). Mostly single, sometimes double on the drop.
+    let lane = (Math.random() * LANES) | 0;
+    addNote(lane, t);
+    // occasional double-note (jump) when hype high
+    if (onQuarter && elapsed > 18 && Math.random() < 0.16) {
+      let l2 = (lane + 1 + ((Math.random() * (LANES - 1)) | 0)) % LANES;
+      addNote(l2, t);
+    }
+  }
+
+  function addNote(lane, hitTime) {
+    notes.push({ lane, hitTime, judged: false, y: SPAWN_Y, scale: 0, dead: false });
+  }
+
+  // Map an AC time to the note's screen position.
+  function noteY(n, nowAC) {
+    const dt = n.hitTime - nowAC;     // >0 means still falling
+    const p = 1 - dt / TRAVEL;        // 0 at spawn-ish, 1 at hit line
+    return SPAWN_Y + (HIT_Y - SPAWN_Y) * (1 - dt / TRAVEL);
+  }
+
+  // ============================ INPUT =====================================
+  function laneX(lane) {
+    const fieldW = W - 24;
+    const lw = fieldW / LANES;
+    return 12 + lw * lane + lw / 2;
+  }
+  function laneWidth() { return (W - 24) / LANES; }
+
+  function pointToLane(px) {
+    const fieldW = W - 24;
+    const lw = fieldW / LANES;
+    let l = Math.floor((px - 12) / lw);
+    return Math.max(0, Math.min(LANES - 1, l));
+  }
+
+  // Convert a client coord to logical canvas coord.
+  function toLogical(clientX, clientY) {
+    const r = canvas.getBoundingClientRect();
+    const x = (clientX - r.left) / r.width * W;
+    const y = (clientY - r.top) / r.height * H;
+    return { x, y };
+  }
+
+  function handlePress(clientX, clientY) {
+    if (state === 'playing') {
+      const { x } = toLogical(clientX, clientY);
+      const lane = pointToLane(x);
+      tapLane(lane);
+    }
+  }
+
+  // Judge the nearest unjudged note in a lane.
+  function tapLane(lane) {
+    if (!AC) return;
+    const now = AC.currentTime;
+    laneFlash[lane] = 1;
+    let best = null, bestDt = 1e9;
+    for (const n of notes) {
+      if (n.lane !== lane || n.judged) continue;
+      const dt = Math.abs(n.hitTime - now);
+      if (dt < bestDt) { bestDt = dt; best = n; }
+    }
+    const PERFECT = 0.075, GOOD = 0.16;
+    if (best && bestDt <= GOOD) {
+      best.judged = true; best.dead = true;
+      if (bestDt <= PERFECT) registerHit(2, best);
+      else registerHit(1, best);
+    } else {
+      // empty tap — small hype penalty, breaks nothing big
+      registerMiss(false, lane);
+    }
+  }
+  const laneFlash = [0, 0, 0, 0];
+
+  function registerHit(quality, n) {
+    const gain = quality === 2 ? 100 : 50;
+    combo++;
+    const mult = 1 + Math.floor(combo / 10) * 0.5;
+    score += Math.round(gain * mult);
+    maxCombo = Math.max(maxCombo, combo);
+    hype = Math.min(100, hype + (quality === 2 ? 3.2 : 2.0));
+    comboFlash = 1;
+    hitSfx(quality);
+    dancer.poke(quality);
+    const x = laneX(n.lane);
+    popups.push({ x, y: HIT_Y - 30, txt: quality === 2 ? 'PERFECT' : 'GOOD',
+                  col: quality === 2 ? '#ffd34d' : '#9bff6b', life: 1, vy: -34 });
+    burst(x, HIT_Y, laneColors[n.lane], quality === 2 ? 16 : 9);
+    if (quality === 2) shake = Math.min(shake + 3, 8);
+  }
+
+  function registerMiss(fromNote, lane) {
+    combo = 0;
+    hype = Math.max(0, hype - (fromNote ? 8 : 4));
+    missSfx();
+    if (lane != null) {
+      popups.push({ x: laneX(lane), y: HIT_Y - 20, txt: fromNote ? 'MISS' : 'X',
+                    col: '#ff5b6e', life: .8, vy: -22 });
+    }
+    shake = Math.min(shake + 4, 9);
+    if (hype <= 0 && state === 'playing') gameOver();
+  }
+
+  // pointer / touch
+  canvas.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    for (const t of e.changedTouches) handlePress(t.clientX, t.clientY);
+  }, { passive: false });
+  canvas.addEventListener('mousedown', (e) => { handlePress(e.clientX, e.clientY); });
+  // keyboard for desktop testing
+  window.addEventListener('keydown', (e) => {
+    if (state !== 'playing') return;
+    const map = { 'a': 0, 's': 1, 'k': 2, 'l': 3,
+                  'arrowleft': 0, 'arrowdown': 1, 'arrowup': 2, 'arrowright': 3 };
+    const l = map[e.key.toLowerCase()];
+    if (l != null) { e.preventDefault(); tapLane(l); }
+  });
+
+  // ============================ DANCER ====================================
+  // Stylised version of the source: brown hair, glasses, open pink shirt,
+  // bare chest, dark shorts. Poses cycle on each hit for a lively dance.
+  const dancer = {
+    pose: 0, t: 0, poke(q) { this.pose = (this.pose + 1) % DANCE_POSES.length; this.energy = 1; this.bop = q === 2 ? 1 : 0.6; },
+    energy: 0, bop: 0,
+  };
+
+  // Each pose: arm angles (shoulder, elbow) + hip sway + leg lift.
+  // angles in radians, measured so 0 = straight down.
+  const DANCE_POSES = [
+    { la:[-0.4,-0.9], ra:[0.4,0.9], sway:-0.10, lift:0, head:-0.08 }, // hands up-ish
+    { la:[-2.4,-0.6], ra:[ 2.4, 0.6], sway:0.0,  lift:0, head:0.0  }, // both arms up high
+    { la:[-0.2,-1.6], ra:[1.9, 0.4], sway:0.10,  lift:0.2, head:0.06}, // point + flex
+    { la:[-1.9,-0.5], ra:[0.2, 1.6], sway:-0.10, lift:0.2, head:-0.06}, // mirror point
+    { la:[-0.9,-1.7], ra:[0.9, 1.7], sway:0.0,   lift:0, head:0.0 },  // hands near chest
+    { la:[-2.7,-0.3], ra:[0.5, 1.0], sway:0.12,  lift:0, head:0.05 }, // one fist pump
+  ];
+
+  function lerp(a, b, t) { return a + (b - a) * t; }
+
+  // ============================ SCENE DRAW ================================
+  function drawBackground(t) {
+    // Sky gradient (Vegas blue, slightly warm at horizon)
+    const sky = ctx.createLinearGradient(0, 0, 0, SPAWN_Y);
+    sky.addColorStop(0, '#1aa6e8');
+    sky.addColorStop(0.55, '#67c8f0');
+    sky.addColorStop(1, '#bfeaf6');
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, W, SPAWN_Y + 40);
+
+    // Sun glow upper-left
+    const sun = ctx.createRadialGradient(70, 70, 6, 70, 70, 120);
+    sun.addColorStop(0, 'rgba(255,250,220,0.95)');
+    sun.addColorStop(1, 'rgba(255,250,220,0)');
+    ctx.fillStyle = sun; ctx.fillRect(0, 0, 240, 240);
+
+    // Palm trees (a few, parallax sway)
+    drawPalm(300, 150, 1.0, t, 0.0);
+    drawPalm(60, 175, 0.78, t, 1.4);
+    drawPalm(200, 130, 0.62, t, 2.6);
+
+    // White cabana umbrellas row
+    drawUmbrella(120, 250, 0.9);
+    drawUmbrella(290, 240, 1.0);
+    drawUmbrella(40, 260, 0.7);
+
+    // Pool deck / floor under the stage
+    const deck = ctx.createLinearGradient(0, SPAWN_Y - 30, 0, H);
+    deck.addColorStop(0, '#2bbbe0');
+    deck.addColorStop(0.25, '#0f7fb8');
+    deck.addColorStop(1, '#063a59');
+    ctx.fillStyle = deck;
+    ctx.fillRect(0, SPAWN_Y - 30, W, H - (SPAWN_Y - 30));
+
+    // shimmering water lines
+    ctx.globalAlpha = 0.15; ctx.strokeStyle = '#bff0ff'; ctx.lineWidth = 2;
+    for (let i = 0; i < 5; i++) {
+      const yy = SPAWN_Y + 8 + i * 14;
+      ctx.beginPath();
+      for (let x = 0; x <= W; x += 12) {
+        const yo = Math.sin((x * 0.05) + t * 2 + i) * 2.2;
+        if (x === 0) ctx.moveTo(x, yy + yo); else ctx.lineTo(x, yy + yo);
+      }
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+
+    // Crowd silhouettes dancing behind the hero
+    drawCrowd(t);
+  }
+
+  function drawPalm(x, baseY, s, t, ph) {
+    const sway = Math.sin(t * 1.3 + ph) * 0.08;
+    ctx.save();
+    ctx.translate(x, baseY);
+    ctx.scale(s, s);
+    ctx.rotate(sway);
+    // trunk
+    ctx.strokeStyle = '#7a5a34'; ctx.lineWidth = 12; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(8, -70, -4, -150); ctx.stroke();
+    ctx.lineWidth = 9; ctx.strokeStyle = '#8b6840';
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(8, -70, -4, -150); ctx.stroke();
+    // fronds
+    ctx.translate(-4, -150);
+    ctx.fillStyle = '#2f8f3f';
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2 + sway;
+      ctx.save(); ctx.rotate(a);
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.quadraticCurveTo(55, -8, 90, 16);
+      ctx.quadraticCurveTo(52, 6, 0, 6);
+      ctx.fill();
+      ctx.restore();
+    }
+    ctx.fillStyle = '#256e30';
+    ctx.beginPath(); ctx.arc(0, 0, 8, 0, 7); ctx.fill();
+    ctx.restore();
+  }
+
+  function drawUmbrella(x, y, s) {
+    ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
+    ctx.fillStyle = 'rgba(120,90,70,.5)';
+    ctx.fillRect(-2, 0, 4, 60); // pole
+    // canopy
+    ctx.fillStyle = '#f4ede0';
+    ctx.beginPath(); ctx.moveTo(-46, 0);
+    ctx.quadraticCurveTo(0, -34, 46, 0);
+    ctx.quadraticCurveTo(0, -10, -46, 0); ctx.fill();
+    ctx.strokeStyle = '#d8cbb6'; ctx.lineWidth = 1.2; ctx.stroke();
+    // red trim accent
+    ctx.fillStyle = '#d23b3b';
+    ctx.beginPath(); ctx.moveTo(-46, 0); ctx.quadraticCurveTo(-23,-6,0,-2);
+    ctx.quadraticCurveTo(-23,4,-46,0); ctx.fill();
+    ctx.restore();
+  }
+
+  function drawCrowd(t) {
+    // dancing partygoer silhouettes (bikinis / shades) behind hero
+    const skins = ['#caa07a', '#e8c39a', '#a9805a', '#d9ae84'];
+    const swim = ['#222', '#e35a8c', '#3fd0c0', '#222', '#f0c14b'];
+    const base = SPAWN_Y - 20;
+    const xs = [28, 70, 330, 360, 110, 300];
+    for (let i = 0; i < xs.length; i++) {
+      const x = xs[i];
+      const bob = Math.sin(t * 4 + i * 1.7) * 5;
+      const ar = Math.sin(t * 4 + i) * 0.6;
+      ctx.save(); ctx.translate(x, base + bob); ctx.scale(i % 2 ? -1 : 1, 1);
+      ctx.globalAlpha = 0.92;
+      // legs
+      ctx.fillStyle = skins[i % skins.length];
+      ctx.fillRect(-9, 0, 7, 34); ctx.fillRect(3, 0, 7, 34);
+      // torso/swimsuit
+      ctx.fillStyle = swim[i % swim.length];
+      ctx.fillRect(-11, -34, 22, 38);
+      // skin shoulders
+      ctx.fillStyle = skins[i % skins.length];
+      ctx.fillRect(-11, -42, 22, 12);
+      // arm up waving
+      ctx.save(); ctx.translate(9, -38); ctx.rotate(-1.2 + ar);
+      ctx.fillRect(0, -3, 26, 7); ctx.restore();
+      // head
+      ctx.beginPath(); ctx.arc(0, -52, 10, 0, 7); ctx.fill();
+      // sunglasses
+      ctx.fillStyle = '#111'; ctx.fillRect(-8, -55, 16, 5);
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // ----- The hero dancer -----
+  function drawDancer(t) {
+    const cx = W / 2;
+    const groundY = SPAWN_Y + 36;
+    // smooth interpolate toward current pose
+    const P = DANCE_POSES[dancer.pose];
+    dancer.energy = Math.max(0, dancer.energy - 0.05);
+    // idle bop
+    const bopAmt = 4 + crowdHype * 0.05;
+    const beatPhase = AC ? ((AC.currentTime - audioStart) / SPB) : t / SPB;
+    const bop = Math.abs(Math.sin(beatPhase * Math.PI)) * bopAmt;
+    const sway = Math.sin(beatPhase * Math.PI) * (0.04 + P.sway * dancer.energy);
+
+    ctx.save();
+    ctx.translate(cx, groundY - bop);
+    ctx.rotate(sway);
+
+    const skin = '#e7b98d', skinSh = '#cf9d70';
+    const shirt = '#ef84b4', shirtSh = '#d96aa0';
+    const shorts = '#3a4350';
+
+    // ---- legs ----
+    const legLift = P.lift * dancer.energy;
+    ctx.strokeStyle = skin; ctx.lineWidth = 15; ctx.lineCap = 'round';
+    // left leg
+    ctx.beginPath(); ctx.moveTo(-10, -78);
+    ctx.lineTo(-14, -38 + legLift * 14);
+    ctx.lineTo(-16, 0); ctx.stroke();
+    // right leg
+    ctx.beginPath(); ctx.moveTo(10, -78);
+    ctx.lineTo(14, -38 - legLift * 14);
+    ctx.lineTo(16, 0 - legLift * 18); ctx.stroke();
+    // shorts
+    ctx.fillStyle = shorts;
+    ctx.beginPath();
+    ctx.moveTo(-20, -96); ctx.lineTo(20, -96);
+    ctx.lineTo(22, -54); ctx.lineTo(2, -52); ctx.lineTo(-2, -52);
+    ctx.lineTo(-22, -54); ctx.closePath(); ctx.fill();
+
+    // ---- torso (bare chest under open shirt) ----
+    ctx.fillStyle = skin;
+    roundRectPath(-19, -150, 38, 60, 12); ctx.fill();
+    // chest shading
+    ctx.fillStyle = skinSh;
+    ctx.beginPath(); ctx.ellipse(0, -110, 13, 9, 0, 0, 7); ctx.fill();
+
+    // ---- open pink shirt (two panels) ----
+    ctx.fillStyle = shirt;
+    // left panel
+    ctx.beginPath();
+    ctx.moveTo(-20, -152); ctx.lineTo(-4, -150);
+    ctx.lineTo(-9, -92); ctx.lineTo(-24, -94); ctx.closePath(); ctx.fill();
+    // right panel
+    ctx.beginPath();
+    ctx.moveTo(20, -152); ctx.lineTo(4, -150);
+    ctx.lineTo(9, -92); ctx.lineTo(24, -94); ctx.closePath(); ctx.fill();
+    // collar
+    ctx.fillStyle = shirtSh;
+    ctx.beginPath(); ctx.moveTo(-20, -152); ctx.lineTo(-2, -150); ctx.lineTo(-8, -138); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(20, -152); ctx.lineTo(2, -150); ctx.lineTo(8, -138); ctx.closePath(); ctx.fill();
+
+    // ---- arms (animated) ----
+    drawArm(-15, -146, P.la, dancer.energy, skin, shirt, -1, beatPhase);
+    drawArm(15, -146, P.ra, dancer.energy, skin, shirt, 1, beatPhase);
+
+    // ---- neck + head ----
+    ctx.fillStyle = skin; ctx.fillRect(-6, -162, 12, 14);
+    ctx.save();
+    ctx.translate(0, -178); ctx.rotate(P.head * dancer.energy);
+    // head
+    ctx.fillStyle = skin;
+    ctx.beginPath(); ctx.ellipse(0, 0, 16, 18, 0, 0, 7); ctx.fill();
+    // ears
+    ctx.beginPath(); ctx.ellipse(-16, 0, 3, 5, 0, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(16, 0, 3, 5, 0, 0, 7); ctx.fill();
+    // hair (brown, swept)
+    ctx.fillStyle = '#4a3322';
+    ctx.beginPath();
+    ctx.moveTo(-17, -2);
+    ctx.quadraticCurveTo(-20, -20, 0, -20);
+    ctx.quadraticCurveTo(20, -20, 17, -2);
+    ctx.quadraticCurveTo(10, -12, 0, -11);
+    ctx.quadraticCurveTo(-8, -11, -17, -2);
+    ctx.fill();
+    // glasses
+    ctx.strokeStyle = '#1b1b1b'; ctx.lineWidth = 2.2;
+    ctx.beginPath(); ctx.arc(-7, 0, 5.2, 0, 7); ctx.stroke();
+    ctx.beginPath(); ctx.arc(7, 0, 5.2, 0, 7); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-1.8, 0); ctx.lineTo(1.8, 0); ctx.stroke();
+    // mouth (open, having a blast) — bigger with hype
+    ctx.fillStyle = '#5a2230';
+    const m = 2 + crowdHype * 0.03 + dancer.energy * 2;
+    ctx.beginPath(); ctx.ellipse(0, 8, 4, m, 0, 0, 7); ctx.fill();
+    ctx.restore();
+
+    ctx.restore();
+  }
+
+  function drawArm(sx, sy, ang, energy, skin, shirt, side, beatPhase) {
+    // ang = [shoulder, elbow] target; idle adds a little beat motion
+    const wob = Math.sin(beatPhase * Math.PI * 2 + (side > 0 ? 0 : Math.PI)) * 0.18;
+    const sh = ang[0] * (0.35 + 0.65 * energy) + wob * (1 - energy * 0.5);
+    const el = ang[1] * (0.35 + 0.65 * energy);
+    const upper = 30, fore = 28;
+    ctx.save(); ctx.translate(sx, sy);
+    ctx.rotate(sh);
+    // upper arm (short shirt sleeve then skin)
+    ctx.strokeStyle = shirt; ctx.lineWidth = 14; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, 14); ctx.stroke();
+    ctx.strokeStyle = skin; ctx.lineWidth = 12;
+    ctx.beginPath(); ctx.moveTo(0, 12); ctx.lineTo(0, upper); ctx.stroke();
+    // forearm
+    ctx.translate(0, upper); ctx.rotate(el);
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, fore); ctx.stroke();
+    // hand
+    ctx.fillStyle = skin;
+    ctx.beginPath(); ctx.arc(0, fore, 7, 0, 7); ctx.fill();
+    ctx.restore();
+  }
+
+  function roundRectPath(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  // ============================ PLAYFIELD =================================
+  function drawField(nowAC) {
+    const lw = laneWidth();
+    // lane backgrounds
+    for (let l = 0; l < LANES; l++) {
+      const x = 12 + lw * l;
+      ctx.fillStyle = l % 2 ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.10)';
+      ctx.fillRect(x, SPAWN_Y, lw, H - SPAWN_Y);
+      // lane flash on tap
+      if (laneFlash[l] > 0) {
+        ctx.globalAlpha = laneFlash[l] * 0.5;
+        const g = ctx.createLinearGradient(0, HIT_Y, 0, SPAWN_Y);
+        g.addColorStop(0, laneColors[l]); g.addColorStop(1, 'transparent');
+        ctx.fillStyle = g; ctx.fillRect(x, SPAWN_Y, lw, H - SPAWN_Y);
+        ctx.globalAlpha = 1;
+        laneFlash[l] = Math.max(0, laneFlash[l] - 0.08);
+      }
+      // separators
+      ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(x, SPAWN_Y); ctx.lineTo(x, H); ctx.stroke();
+    }
+    ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+    ctx.beginPath(); ctx.moveTo(12 + lw * LANES, SPAWN_Y); ctx.lineTo(12 + lw * LANES, H); ctx.stroke();
+
+    // HIT LINE with glow
+    ctx.save();
+    ctx.shadowColor = '#fff'; ctx.shadowBlur = 16;
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(12, HIT_Y); ctx.lineTo(12 + lw * LANES, HIT_Y); ctx.stroke();
+    ctx.restore();
+    // hit target rings
+    for (let l = 0; l < LANES; l++) {
+      const x = laneX(l);
+      ctx.strokeStyle = laneColors[l]; ctx.lineWidth = 3;
+      ctx.globalAlpha = 0.9;
+      ctx.beginPath(); ctx.arc(x, HIT_Y, 24, 0, 7); ctx.stroke();
+      ctx.globalAlpha = 0.18; ctx.fillStyle = laneColors[l];
+      ctx.beginPath(); ctx.arc(x, HIT_Y, 22, 0, 7); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
+    // NOTES
+    for (const n of notes) {
+      const y = noteY(n, nowAC);
+      n.scale = Math.min(1, n.scale + 0.12);
+      const x = laneX(n.lane);
+      const r = 22 * n.scale;
+      // trail
+      ctx.globalAlpha = 0.25;
+      ctx.fillStyle = laneGlow[n.lane];
+      ctx.beginPath(); ctx.ellipse(x, y - 14, r * 0.7, r * 1.5, 0, 0, 7); ctx.fill();
+      ctx.globalAlpha = 1;
+      // body
+      ctx.save();
+      ctx.shadowColor = laneColors[n.lane]; ctx.shadowBlur = 14;
+      const g = ctx.createRadialGradient(x - 6, y - 6, 2, x, y, r);
+      g.addColorStop(0, '#fff'); g.addColorStop(0.4, laneGlow[n.lane]); g.addColorStop(1, laneColors[n.lane]);
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
+      ctx.restore();
+      // music-note icon
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.font = `${Math.round(20 * n.scale)}px sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('♪', x, y + 1);
+    }
+  }
+
+  // ============================ FX ========================================
+  function burst(x, y, color, n) {
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2, sp = 1 + Math.random() * 4;
+      particles.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 1,
+        life: 1, color, size: 2 + Math.random() * 3 });
+    }
+  }
+  function confettiRain() {
+    const cols = ['#ff5fa8', '#ffd34d', '#5fd0ff', '#9bff6b', '#fff'];
+    for (let i = 0; i < 3; i++) {
+      particles.push({ x: Math.random() * W, y: -10,
+        vx: (Math.random() - 0.5) * 1.5, vy: 2 + Math.random() * 2,
+        life: 2.2, color: cols[(Math.random() * cols.length) | 0],
+        size: 3 + Math.random() * 3, conf: true, rot: Math.random() * 7, vr: (Math.random()-.5)*.4 });
+    }
+  }
+  function updateParticles(dt) {
+    for (const p of particles) {
+      p.x += p.vx; p.y += p.vy;
+      p.vy += p.conf ? 0.04 : 0.18;
+      if (p.conf) p.rot += p.vr;
+      p.life -= dt * (p.conf ? 0.5 : 1.6);
+    }
+    particles = particles.filter(p => p.life > 0 && p.y < H + 20);
+  }
+  function drawParticles() {
+    for (const p of particles) {
+      ctx.globalAlpha = Math.max(0, Math.min(1, p.life));
+      ctx.fillStyle = p.color;
+      if (p.conf) {
+        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+        ctx.fillRect(-p.size, -p.size * 0.6, p.size * 2, p.size * 1.2);
+        ctx.restore();
+      } else {
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, 7); ctx.fill();
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+  function drawPopups(dt) {
+    for (const p of popups) {
+      p.y += p.vy * dt; p.life -= dt * 1.6;
+      ctx.globalAlpha = Math.max(0, p.life);
+      ctx.fillStyle = p.col;
+      ctx.font = '900 22px Trebuchet MS, sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.strokeStyle = 'rgba(0,0,0,.5)'; ctx.lineWidth = 4;
+      ctx.strokeText(p.txt, p.x, p.y); ctx.fillText(p.txt, p.x, p.y);
+    }
+    ctx.globalAlpha = 1;
+    popups = popups.filter(p => p.life > 0);
+  }
+
+  // ============================ HUD =======================================
+  function drawHUD() {
+    // top translucent bar
+    ctx.fillStyle = 'rgba(6,16,24,0.28)';
+    ctx.fillRect(0, 0, W, 64);
+
+    // score
+    ctx.fillStyle = '#fff';
+    ctx.font = '900 30px Trebuchet MS, sans-serif';
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    ctx.strokeStyle = 'rgba(0,0,0,.45)'; ctx.lineWidth = 4;
+    ctx.strokeText(score.toLocaleString(), 14, 26);
+    ctx.fillText(score.toLocaleString(), 14, 26);
+    ctx.font = '700 11px Trebuchet MS, sans-serif';
+    ctx.fillStyle = '#cfe2f0';
+    ctx.fillText('SCORE', 15, 46);
+
+    // combo (center, punchy)
+    if (combo > 1) {
+      comboFlash = Math.max(0, comboFlash - 0.05);
+      const s = 1 + comboFlash * 0.4;
+      ctx.save();
+      ctx.translate(W / 2, 34); ctx.scale(s, s);
+      ctx.fillStyle = combo >= 30 ? '#ffd34d' : '#fff';
+      ctx.font = '900 30px Trebuchet MS, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.strokeStyle = 'rgba(0,0,0,.5)'; ctx.lineWidth = 5;
+      ctx.strokeText(combo + 'x', 0, 0); ctx.fillText(combo + 'x', 0, 0);
+      ctx.restore();
+      ctx.fillStyle = '#cfe2f0'; ctx.font = '700 11px Trebuchet MS,sans-serif';
+      ctx.textAlign = 'center'; ctx.fillText('COMBO', W / 2, 52);
+    }
+
+    // HYPE meter (right)
+    const mx = W - 130, my = 18, mw = 116, mh = 16;
+    ctx.fillStyle = 'rgba(0,0,0,.35)';
+    roundRectPath(mx, my, mw, mh, 8); ctx.fill();
+    const hg = ctx.createLinearGradient(mx, 0, mx + mw, 0);
+    hg.addColorStop(0, '#5fd0ff'); hg.addColorStop(0.5, '#ffd34d'); hg.addColorStop(1, '#ff5fa8');
+    ctx.save();
+    roundRectPath(mx, my, mw, mh, 8); ctx.clip();
+    ctx.fillStyle = hg; ctx.fillRect(mx, my, mw * (hype / 100), mh);
+    // low-hype warning pulse
+    if (hype < 25) {
+      ctx.fillStyle = `rgba(255,40,60,${0.25 + 0.25 * Math.sin(elapsed * 12)})`;
+      ctx.fillRect(mx, my, mw, mh);
+    }
+    ctx.restore();
+    ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = 1.5;
+    roundRectPath(mx, my, mw, mh, 8); ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.font = '900 11px Trebuchet MS,sans-serif';
+    ctx.textAlign = 'right'; ctx.fillText('🔥 HYPE', mx + mw, my + mh + 12);
+  }
+
+  // ============================ LOOP ======================================
+  function frame(ms) {
+    requestAnimationFrame(frame);
+    const tSec = ms / 1000;
+    let dt = lastTime ? Math.min(0.05, tSec - lastTime) : 0.016;
+    lastTime = tSec;
+
+    if (state === 'playing') {
+      elapsed = AC ? (AC.currentTime - audioStart) : elapsed + dt;
+      // passive hype drain so you must keep hitting
+      hype = Math.max(0, hype - dt * (1.6 + elapsed * 0.02));
+      if (hype <= 0) { gameOver(); }
+      // crowd hype smoothing
+      crowdHype += ((combo > 8 ? 100 : hype) - crowdHype) * 0.05;
+      // confetti when on fire
+      if (combo >= 20 && Math.random() < 0.5) confettiRain();
+    }
+
+    // expire missed notes
+    if (AC && state === 'playing') {
+      const now = AC.currentTime;
+      for (const n of notes) {
+        if (!n.judged && now - n.hitTime > 0.17) {
+          n.judged = true; n.dead = true;
+          registerMiss(true, n.lane);
+        }
+      }
+    }
+    notes = notes.filter(n => !n.dead && (!AC || n.hitTime - AC.currentTime > -0.4));
+
+    // ---- render ----
+    ctx.setTransform(dpr * scale, 0, 0, dpr * scale, offX, offY);
+    let sx = 0, sy = 0;
+    if (shake > 0) { sx = (Math.random() - .5) * shake; sy = (Math.random() - .5) * shake; shake *= 0.86; if (shake < .3) shake = 0; }
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.clearRect(-10, -10, W + 20, H + 20);
+
+    drawBackground(tSec);
+    drawDancer(tSec);
+    const nowAC = AC ? AC.currentTime : 0;
+    if (state !== 'title') drawField(nowAC);
+
+    updateParticles(dt);
+    drawParticles();
+    drawPopups(dt);
+
+    if (state === 'playing') drawHUD();
+    ctx.restore();
+  }
+  requestAnimationFrame(frame);
+
+  // ============================ FLOW ======================================
+  function startGame() {
+    initAudio();
+    document.getElementById('title').classList.add('hidden');
+    document.getElementById('over').classList.add('hidden');
+    notes = []; particles = []; popups = []; spawnedSteps.clear();
+    score = 0; combo = 0; maxCombo = 0; hype = 65; elapsed = 0; shake = 0; crowdHype = 0;
+    dancer.pose = 0; dancer.energy = 0;
+    state = 'playing';
+    // start groove
+    beatIndex = 0;
+    audioStart = AC.currentTime + 0.12;
+    nextNoteTime = audioStart;
+    if (musicTimer) clearInterval(musicTimer);
+    musicTimer = setInterval(musicScheduler, 25);
+    musicScheduler();
+  }
+
+  function gameOver() {
+    if (state !== 'playing') return;
+    state = 'over';
+    if (musicTimer) { clearInterval(musicTimer); musicTimer = null; }
+    // fade music
+    if (musicGain) {
+      const t = AC.currentTime;
+      musicGain.gain.cancelScheduledValues(t);
+      musicGain.gain.setValueAtTime(musicGain.gain.value, t);
+      musicGain.gain.linearRampToValueAtTime(0.0001, t + 0.6);
+      setTimeout(() => { if (musicGain) musicGain.gain.value = 0.85; }, 900);
+    }
+    const isBest = score > best;
+    if (isBest) { best = score; localStorage.setItem('ppdo_best', best); }
+    document.getElementById('finalScore').textContent = score.toLocaleString();
+    document.getElementById('finalCombo').textContent = maxCombo;
+    document.getElementById('finalBest').textContent = best;
+    document.getElementById('titleBest').textContent = best;
+    document.getElementById('newBest').classList.toggle('hidden', !isBest);
+    document.getElementById('over').classList.remove('hidden');
+  }
+
+  document.getElementById('startBtn').addEventListener('click', startGame);
+  document.getElementById('againBtn').addEventListener('click', startGame);
+
+  // Optional autoplay (demo / self-test): open with #auto in the URL.
+  if (location.hash === '#auto') {
+    const autoLoop = () => {
+      if (state === 'playing' && AC) {
+        const now = AC.currentTime;
+        for (const n of notes) {
+          if (!n.judged && Math.abs(n.hitTime - now) <= 0.05) tapLane(n.lane);
+        }
+      }
+      requestAnimationFrame(autoLoop);
+    };
+    requestAnimationFrame(autoLoop);
+  }
+
+  // Prevent iOS double-tap zoom / scroll bounce
+  document.addEventListener('gesturestart', e => e.preventDefault());
+  document.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+})();
+</script>
+</body>
+</html>
