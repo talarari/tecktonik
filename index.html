@@ -497,129 +497,211 @@
 
   // ============================ SCENE DRAW ================================
   function drawBackground(t) {
-    // Sky gradient (Vegas blue, slightly warm at horizon)
+    // --- Bright Vegas sky ---
     const sky = ctx.createLinearGradient(0, 0, 0, SPAWN_Y);
-    sky.addColorStop(0, '#1aa6e8');
-    sky.addColorStop(0.55, '#67c8f0');
-    sky.addColorStop(1, '#bfeaf6');
+    sky.addColorStop(0, '#1f8fe0');
+    sky.addColorStop(0.5, '#34a9ec');
+    sky.addColorStop(0.82, '#84d0f2');
+    sky.addColorStop(1, '#cdeaf6');
     ctx.fillStyle = sky;
-    ctx.fillRect(0, 0, W, SPAWN_Y + 40);
+    ctx.fillRect(0, 0, W, SPAWN_Y + 6);
 
-    // Sun glow upper-left
-    const sun = ctx.createRadialGradient(70, 70, 6, 70, 70, 120);
-    sun.addColorStop(0, 'rgba(255,250,220,0.95)');
-    sun.addColorStop(1, 'rgba(255,250,220,0)');
-    ctx.fillStyle = sun; ctx.fillRect(0, 0, 240, 240);
+    // Sun flare upper-right
+    const sun = ctx.createRadialGradient(330, 54, 4, 330, 54, 150);
+    sun.addColorStop(0, 'rgba(255,252,235,0.95)');
+    sun.addColorStop(0.4, 'rgba(255,250,225,0.35)');
+    sun.addColorStop(1, 'rgba(255,250,225,0)');
+    ctx.fillStyle = sun; ctx.fillRect(120, 0, W - 120, 220);
 
-    // Palm trees (a few, parallax sway)
-    drawPalm(300, 150, 1.0, t, 0.0);
-    drawPalm(60, 175, 0.78, t, 1.4);
-    drawPalm(200, 130, 0.62, t, 2.6);
+    // Distant smaller palms (parallax, behind everything)
+    drawPalm(48, 196, 0.62, t, 1.4, false);
+    drawPalm(348, 188, 0.66, t, 2.6, false);
 
-    // White cabana umbrellas row
-    drawUmbrella(120, 250, 0.9);
-    drawUmbrella(290, 240, 1.0);
-    drawUmbrella(40, 260, 0.7);
+    // Hero palm — tall, centred behind the dancer (like the source)
+    drawPalm(W / 2 + 6, 250, 1.18, t, 0.0, true);
 
-    // Pool deck / floor under the stage
-    const deck = ctx.createLinearGradient(0, SPAWN_Y - 30, 0, H);
-    deck.addColorStop(0, '#2bbbe0');
-    deck.addColorStop(0.25, '#0f7fb8');
-    deck.addColorStop(1, '#063a59');
+    // Warm cabana/club band on the horizon
+    const band = ctx.createLinearGradient(0, 286, 0, SPAWN_Y);
+    band.addColorStop(0, '#e8d6b8');
+    band.addColorStop(1, '#cbb48f');
+    ctx.fillStyle = band;
+    ctx.fillRect(0, 300, W, SPAWN_Y - 300 + 4);
+    // distant building blocks
+    ctx.fillStyle = 'rgba(210,194,164,0.9)';
+    ctx.fillRect(0, 292, 70, 16); ctx.fillRect(300, 290, 90, 18);
+    ctx.fillStyle = 'rgba(150,120,90,0.25)';
+    ctx.fillRect(0, 305, W, 2);
+
+    // Cabana umbrellas (cream w/ red scalloped trim)
+    drawUmbrella(96, 318, 0.92, t, 0.4);
+    drawUmbrella(300, 314, 1.04, t, 1.1);
+    drawUmbrella(W / 2 + 4, 308, 0.8, t, 2.0);
+
+    // Crowd dancing behind the hero
+    drawCrowd(t);
+
+    // --- Pool below the stage (playfield backdrop) ---
+    // deck lip
+    ctx.fillStyle = '#d9c39c';
+    ctx.fillRect(0, SPAWN_Y - 6, W, 10);
+    ctx.fillStyle = 'rgba(120,95,60,0.18)';
+    ctx.fillRect(0, SPAWN_Y + 3, W, 2);
+    const deck = ctx.createLinearGradient(0, SPAWN_Y, 0, H);
+    deck.addColorStop(0, '#34c2e6');
+    deck.addColorStop(0.28, '#1391c6');
+    deck.addColorStop(1, '#06375a');
     ctx.fillStyle = deck;
-    ctx.fillRect(0, SPAWN_Y - 30, W, H - (SPAWN_Y - 30));
+    ctx.fillRect(0, SPAWN_Y + 4, W, H - SPAWN_Y);
 
     // shimmering water lines
-    ctx.globalAlpha = 0.15; ctx.strokeStyle = '#bff0ff'; ctx.lineWidth = 2;
-    for (let i = 0; i < 5; i++) {
-      const yy = SPAWN_Y + 8 + i * 14;
+    ctx.globalAlpha = 0.16; ctx.strokeStyle = '#d4f4ff'; ctx.lineWidth = 2;
+    for (let i = 0; i < 6; i++) {
+      const yy = SPAWN_Y + 16 + i * 16;
       ctx.beginPath();
       for (let x = 0; x <= W; x += 12) {
-        const yo = Math.sin((x * 0.05) + t * 2 + i) * 2.2;
+        const yo = Math.sin((x * 0.05) + t * 2 + i) * 2.4;
         if (x === 0) ctx.moveTo(x, yy + yo); else ctx.lineTo(x, yy + yo);
       }
       ctx.stroke();
     }
     ctx.globalAlpha = 1;
 
-    // Crowd silhouettes dancing behind the hero
-    drawCrowd(t);
+    // soft sunny warm overlay over the whole scene
+    ctx.globalAlpha = 0.06; ctx.fillStyle = '#ffdf9a';
+    ctx.fillRect(0, 0, W, SPAWN_Y); ctx.globalAlpha = 1;
   }
 
-  function drawPalm(x, baseY, s, t, ph) {
-    const sway = Math.sin(t * 1.3 + ph) * 0.08;
+  function drawPalm(x, baseY, s, t, ph, hero) {
+    const sway = Math.sin(t * 1.1 + ph) * 0.045;
+    const TH = 150;                       // trunk height (pre-scale)
     ctx.save();
     ctx.translate(x, baseY);
     ctx.scale(s, s);
-    ctx.rotate(sway);
-    // trunk
-    ctx.strokeStyle = '#7a5a34'; ctx.lineWidth = 12; ctx.lineCap = 'round';
-    ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(8, -70, -4, -150); ctx.stroke();
-    ctx.lineWidth = 9; ctx.strokeStyle = '#8b6840';
-    ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(8, -70, -4, -150); ctx.stroke();
-    // fronds
-    ctx.translate(-4, -150);
-    ctx.fillStyle = '#2f8f3f';
-    for (let i = 0; i < 8; i++) {
-      const a = (i / 8) * Math.PI * 2 + sway;
-      ctx.save(); ctx.rotate(a);
-      ctx.beginPath();
-      ctx.moveTo(0, 0);
-      ctx.quadraticCurveTo(55, -8, 90, 16);
-      ctx.quadraticCurveTo(52, 6, 0, 6);
-      ctx.fill();
-      ctx.restore();
+    const topX = Math.sin(sway) * 14;     // crown leans with the breeze
+
+    // --- trunk: tapered, curved, with segment rings ---
+    ctx.fillStyle = '#a17a4a';
+    ctx.beginPath();
+    ctx.moveTo(-8.5, 0);
+    ctx.quadraticCurveTo(-3, -TH * 0.5, topX - 4.5, -TH);
+    ctx.lineTo(topX + 4.5, -TH);
+    ctx.quadraticCurveTo(8.5, -TH * 0.5, 8.5, 0);
+    ctx.closePath(); ctx.fill();
+    // shaded side
+    ctx.fillStyle = 'rgba(110,76,40,0.35)';
+    ctx.beginPath();
+    ctx.moveTo(2, 0);
+    ctx.quadraticCurveTo(5.5, -TH * 0.5, topX + 2, -TH);
+    ctx.lineTo(topX + 4.5, -TH);
+    ctx.quadraticCurveTo(8.5, -TH * 0.5, 8.5, 0);
+    ctx.closePath(); ctx.fill();
+    // segment rings
+    ctx.strokeStyle = 'rgba(90,60,30,0.45)'; ctx.lineWidth = 1.4;
+    for (let i = 1; i < 9; i++) {
+      const yy = -TH * i / 9, w = 8 - i * 0.45, cx = topX * (i / 9);
+      ctx.beginPath(); ctx.moveTo(cx - w, yy); ctx.quadraticCurveTo(cx, yy + 3, cx + w, yy); ctx.stroke();
     }
-    ctx.fillStyle = '#256e30';
-    ctx.beginPath(); ctx.arc(0, 0, 8, 0, 7); ctx.fill();
+
+    // --- crown ---
+    ctx.translate(topX, -TH);
+    // coconuts
+    ctx.fillStyle = '#5d3f22';
+    for (const [dx, dy] of [[-6, 3], [6, 4], [0, 7]]) { ctx.beginPath(); ctx.arc(dx, dy, 4.2, 0, 7); ctx.fill(); }
+    // fronds — two layers for depth
+    const NF = 11;
+    const drawFronds = (len, col, lw) => {
+      ctx.fillStyle = col;
+      for (let i = 0; i < NF; i++) {
+        const a = -Math.PI * 0.5 + (i / (NF - 1) - 0.5) * Math.PI * 2.05;
+        const droop = 14 + Math.abs(Math.sin(a)) * 10;
+        ctx.save(); ctx.rotate(a + Math.sin(t * 1.6 + i + ph) * 0.03);
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.quadraticCurveTo(len * 0.5, -lw, len, droop);
+        ctx.quadraticCurveTo(len * 0.55, droop + lw, 0, 4);
+        ctx.closePath(); ctx.fill();
+        ctx.restore();
+      }
+    };
+    drawFronds(58, '#1f7a34', 9);          // back/darker
+    drawFronds(50, '#36a54a', 7);          // front/lighter
+    // center
+    ctx.fillStyle = '#15622a';
+    ctx.beginPath(); ctx.arc(0, 2, 7, 0, 7); ctx.fill();
     ctx.restore();
   }
 
-  function drawUmbrella(x, y, s) {
-    ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
-    ctx.fillStyle = 'rgba(120,90,70,.5)';
-    ctx.fillRect(-2, 0, 4, 60); // pole
-    // canopy
-    ctx.fillStyle = '#f4ede0';
-    ctx.beginPath(); ctx.moveTo(-46, 0);
-    ctx.quadraticCurveTo(0, -34, 46, 0);
-    ctx.quadraticCurveTo(0, -10, -46, 0); ctx.fill();
-    ctx.strokeStyle = '#d8cbb6'; ctx.lineWidth = 1.2; ctx.stroke();
-    // red trim accent
-    ctx.fillStyle = '#d23b3b';
-    ctx.beginPath(); ctx.moveTo(-46, 0); ctx.quadraticCurveTo(-23,-6,0,-2);
-    ctx.quadraticCurveTo(-23,4,-46,0); ctx.fill();
+  function drawUmbrella(x, y, s, t, ph) {
+    const sway = Math.sin(t * 1.2 + ph) * 0.02;
+    ctx.save(); ctx.translate(x, y); ctx.scale(s, s); ctx.rotate(sway);
+    const R = 46;
+    // pole
+    ctx.strokeStyle = 'rgba(110,84,58,.6)'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, 46); ctx.stroke();
+    // canopy dome
+    const cg = ctx.createLinearGradient(0, -R * 0.8, 0, 2);
+    cg.addColorStop(0, '#f7f0e0'); cg.addColorStop(1, '#e6d9bf');
+    ctx.fillStyle = cg;
+    ctx.beginPath(); ctx.moveTo(-R, 0); ctx.quadraticCurveTo(0, -R * 0.82, R, 0);
+    ctx.quadraticCurveTo(0, -8, -R, 0); ctx.fill();
+    // panel seams
+    ctx.strokeStyle = 'rgba(180,160,128,.55)'; ctx.lineWidth = 1;
+    for (let i = -2; i <= 2; i++) {
+      ctx.beginPath(); ctx.moveTo(0, -R * 0.78);
+      ctx.quadraticCurveTo(i * R * 0.34, -R * 0.32, i * R * 0.5, -1); ctx.stroke();
+    }
+    // red scalloped trim
+    ctx.fillStyle = '#d6392f';
+    const sc = 6;
+    for (let i = 0; i < sc; i++) {
+      const x0 = -R + (i * 2 * R / sc), x1 = -R + ((i + 1) * 2 * R / sc);
+      ctx.beginPath(); ctx.moveTo(x0, -1);
+      ctx.quadraticCurveTo((x0 + x1) / 2, 9, x1, -1); ctx.fill();
+    }
+    // finial
+    ctx.fillStyle = '#cdbf9f';
+    ctx.beginPath(); ctx.arc(0, -R * 0.8, 2.6, 0, 7); ctx.fill();
     ctx.restore();
   }
 
   function drawCrowd(t) {
-    // dancing partygoer silhouettes (bikinis / shades) behind hero
-    const skins = ['#caa07a', '#e8c39a', '#a9805a', '#d9ae84'];
-    const swim = ['#222', '#e35a8c', '#3fd0c0', '#222', '#f0c14b'];
-    const base = SPAWN_Y - 20;
-    const xs = [28, 70, 330, 360, 110, 300];
-    for (let i = 0; i < xs.length; i++) {
-      const x = xs[i];
-      const bob = Math.sin(t * 4 + i * 1.7) * 5;
-      const ar = Math.sin(t * 4 + i) * 0.6;
-      ctx.save(); ctx.translate(x, base + bob); ctx.scale(i % 2 ? -1 : 1, 1);
-      ctx.globalAlpha = 0.92;
+    // bikini-clad partygoers dancing behind the hero
+    const skins = ['#cfa074', '#e3bd92', '#b07f52', '#dcb285'];
+    const tops  = ['#1c1c22', '#e35a8c', '#2fb8a8', '#f0c14b', '#1c1c22', '#d84f7a'];
+    const hairs = ['#3a2a1a', '#6b4a2a', '#2a2a2a', '#8a5a2a'];
+    const base = SPAWN_Y - 4;
+    // x, scale  (flanking the hero, smaller = further)
+    const ppl = [[24,0.82],[58,0.9],[96,0.82],[300,0.86],[336,0.92],[366,0.8]];
+    for (let i = 0; i < ppl.length; i++) {
+      const [x, sc] = ppl[i];
+      const sk = skins[i % skins.length], top = tops[i % tops.length], hair = hairs[i % hairs.length];
+      const bob = Math.sin(t * 3.6 + i * 1.7) * 4;
+      const aL = -2.0 + Math.sin(t * 3.6 + i) * 0.5;
+      const aR = -1.1 + Math.sin(t * 3.6 + i + 1.3) * 0.5;
+      ctx.save(); ctx.translate(x, base + bob); ctx.scale(sc * (i % 2 ? -1 : 1), sc);
+      ctx.globalAlpha = 0.96;
       // legs
-      ctx.fillStyle = skins[i % skins.length];
-      ctx.fillRect(-9, 0, 7, 34); ctx.fillRect(3, 0, 7, 34);
-      // torso/swimsuit
-      ctx.fillStyle = swim[i % swim.length];
-      ctx.fillRect(-11, -34, 22, 38);
-      // skin shoulders
-      ctx.fillStyle = skins[i % skins.length];
-      ctx.fillRect(-11, -42, 22, 12);
-      // arm up waving
-      ctx.save(); ctx.translate(9, -38); ctx.rotate(-1.2 + ar);
-      ctx.fillRect(0, -3, 26, 7); ctx.restore();
-      // head
-      ctx.beginPath(); ctx.arc(0, -52, 10, 0, 7); ctx.fill();
-      // sunglasses
-      ctx.fillStyle = '#111'; ctx.fillRect(-8, -55, 16, 5);
+      ctx.strokeStyle = sk; ctx.lineWidth = 6; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(-5, -30); ctx.lineTo(-6, 0); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(5, -30); ctx.lineTo(6, 0); ctx.stroke();
+      // bikini bottom
+      ctx.fillStyle = top; ctx.fillRect(-8, -34, 16, 8);
+      // torso
+      ctx.fillStyle = sk; roundRectPath(-8, -56, 16, 26, 5); ctx.fill();
+      // bikini top
+      ctx.fillStyle = top; ctx.fillRect(-9, -54, 18, 6);
+      // arms up (dancing)
+      ctx.strokeStyle = sk; ctx.lineWidth = 5.5;
+      ctx.save(); ctx.translate(-7, -52); ctx.rotate(aL);
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, 22); ctx.stroke(); ctx.restore();
+      ctx.save(); ctx.translate(7, -52); ctx.rotate(aR);
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, 22); ctx.stroke(); ctx.restore();
+      // head + hair + shades
+      ctx.fillStyle = sk; ctx.beginPath(); ctx.arc(0, -64, 8.5, 0, 7); ctx.fill();
+      ctx.fillStyle = hair;
+      ctx.beginPath(); ctx.arc(0, -67, 9.2, Math.PI, 2 * Math.PI); ctx.fill();
+      ctx.fillRect(-9.2, -67, 3.4, 8);
+      ctx.fillStyle = '#15151a'; ctx.fillRect(-6.5, -65, 13, 3.4);
       ctx.restore();
     }
     ctx.globalAlpha = 1;
@@ -638,110 +720,185 @@
     const bop = Math.abs(Math.sin(beatPhase * Math.PI)) * bopAmt;
     const sway = Math.sin(beatPhase * Math.PI) * (0.04 + P.sway * dancer.energy);
 
+    // ground shadow
+    ctx.save(); ctx.translate(cx, groundY + 2);
+    ctx.globalAlpha = 0.18; ctx.fillStyle = '#04263a';
+    ctx.beginPath(); ctx.ellipse(0, 0, 30, 7, 0, 0, 7); ctx.fill();
+    ctx.restore();
+
     ctx.save();
     ctx.translate(cx, groundY - bop);
     ctx.rotate(sway);
+    ctx.scale(1.08, 1.08);          // hero presence
 
-    const skin = '#e7b98d', skinSh = '#cf9d70';
-    const shirt = '#ef84b4', shirtSh = '#d96aa0';
-    const shorts = '#3a4350';
+    const skin = '#dca067', skinSh = '#c0824b', skinHi = '#ecbb86';
+    const shirt = '#f491b8', shirtSh = '#dd6fa0', shirtHi = '#ffb7d4';
+    const shorts = '#39414d', shortsSh = '#2b323c';
 
     // ---- legs ----
     const legLift = P.lift * dancer.energy;
-    ctx.strokeStyle = skin; ctx.lineWidth = 15; ctx.lineCap = 'round';
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
     // left leg
-    ctx.beginPath(); ctx.moveTo(-10, -78);
-    ctx.lineTo(-14, -38 + legLift * 14);
-    ctx.lineTo(-16, 0); ctx.stroke();
+    ctx.strokeStyle = skin; ctx.lineWidth = 15;
+    ctx.beginPath(); ctx.moveTo(-10, -78); ctx.lineTo(-14, -40 + legLift * 14); ctx.lineTo(-16, 0); ctx.stroke();
+    ctx.strokeStyle = skinSh; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.moveTo(-13, -70); ctx.lineTo(-16, -6); ctx.stroke();
     // right leg
-    ctx.beginPath(); ctx.moveTo(10, -78);
-    ctx.lineTo(14, -38 - legLift * 14);
-    ctx.lineTo(16, 0 - legLift * 18); ctx.stroke();
-    // shorts
+    ctx.strokeStyle = skin; ctx.lineWidth = 15;
+    ctx.beginPath(); ctx.moveTo(10, -78); ctx.lineTo(14, -40 - legLift * 14); ctx.lineTo(16, 0 - legLift * 18); ctx.stroke();
+    ctx.strokeStyle = skinSh; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.moveTo(13, -70); ctx.lineTo(16, -6 - legLift * 18); ctx.stroke();
+    // flip-flops
+    ctx.fillStyle = '#2a2a2e';
+    ctx.beginPath(); ctx.ellipse(-16, 1, 8, 3.2, 0, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(16, 1 - legLift * 18, 8, 3.2, 0, 0, 7); ctx.fill();
+
+    // ---- shorts (charcoal, knee-length) ----
     ctx.fillStyle = shorts;
     ctx.beginPath();
-    ctx.moveTo(-20, -96); ctx.lineTo(20, -96);
-    ctx.lineTo(22, -54); ctx.lineTo(2, -52); ctx.lineTo(-2, -52);
-    ctx.lineTo(-22, -54); ctx.closePath(); ctx.fill();
+    ctx.moveTo(-20, -98); ctx.lineTo(20, -98);
+    ctx.lineTo(23, -52); ctx.lineTo(3, -50); ctx.lineTo(0, -64);
+    ctx.lineTo(-3, -50); ctx.lineTo(-23, -52); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = shortsSh;
+    ctx.beginPath(); ctx.moveTo(3, -50); ctx.lineTo(23, -52); ctx.lineTo(20, -98); ctx.lineTo(8, -96); ctx.closePath(); ctx.fill();
+    // waistband + drawstring
+    ctx.fillStyle = '#222831'; ctx.fillRect(-20, -100, 40, 5);
+    ctx.strokeStyle = '#cfd3da'; ctx.lineWidth = 1.4;
+    ctx.beginPath(); ctx.moveTo(-3, -96); ctx.lineTo(-5, -88); ctx.moveTo(3, -96); ctx.lineTo(5, -88); ctx.stroke();
 
-    // ---- torso (bare chest under open shirt) ----
+    // ---- bare torso under the open shirt ----
     ctx.fillStyle = skin;
-    roundRectPath(-19, -150, 38, 60, 12); ctx.fill();
-    // chest shading
-    ctx.fillStyle = skinSh;
-    ctx.beginPath(); ctx.ellipse(0, -110, 13, 9, 0, 0, 7); ctx.fill();
+    roundRectPath(-19, -152, 38, 62, 13); ctx.fill();
+    // pecs + abs shading
+    ctx.strokeStyle = skinSh; ctx.lineWidth = 1.6;
+    ctx.beginPath(); ctx.moveTo(0, -150); ctx.lineTo(0, -104); ctx.stroke(); // centre line
+    ctx.beginPath(); ctx.moveTo(-12, -132); ctx.quadraticCurveTo(0, -126, 12, -132); ctx.stroke(); // pec line
+    for (let r = 0; r < 3; r++) { const yy = -120 + r * 9;
+      ctx.beginPath(); ctx.moveTo(-9, yy); ctx.lineTo(-3, yy); ctx.moveTo(3, yy); ctx.lineTo(9, yy); ctx.stroke(); }
+    // highlight
+    ctx.fillStyle = 'rgba(255,235,205,0.35)';
+    ctx.beginPath(); ctx.ellipse(-8, -138, 5, 9, 0, 0, 7); ctx.fill();
+    // necklace chain
+    ctx.strokeStyle = '#e8c45a'; ctx.lineWidth = 1.8;
+    ctx.beginPath(); ctx.moveTo(-9, -150); ctx.quadraticCurveTo(0, -138, 9, -150); ctx.stroke();
+    ctx.fillStyle = '#f0d878'; ctx.beginPath(); ctx.arc(0, -141, 1.8, 0, 7); ctx.fill();
 
-    // ---- open pink shirt (two panels) ----
-    ctx.fillStyle = shirt;
-    // left panel
-    ctx.beginPath();
-    ctx.moveTo(-20, -152); ctx.lineTo(-4, -150);
-    ctx.lineTo(-9, -92); ctx.lineTo(-24, -94); ctx.closePath(); ctx.fill();
-    // right panel
-    ctx.beginPath();
-    ctx.moveTo(20, -152); ctx.lineTo(4, -150);
-    ctx.lineTo(9, -92); ctx.lineTo(24, -94); ctx.closePath(); ctx.fill();
+    // ---- arms drawn BEHIND-most? front arms over shirt panels ----
+    // (arms include the pink long sleeves)
+    drawArm(-16, -148, P.la, dancer.energy, skin, skinSh, shirt, shirtSh, -1, beatPhase);
+    drawArm(16, -148, P.ra, dancer.energy, skin, skinSh, shirt, shirtSh, 1, beatPhase);
+
+    // ---- open pink shirt: two front panels ----
+    const panel = (sgn) => {
+      ctx.fillStyle = shirt;
+      ctx.beginPath();
+      ctx.moveTo(sgn * 22, -154);
+      ctx.lineTo(sgn * 9, -150);
+      ctx.quadraticCurveTo(sgn * 12, -118, sgn * 15, -90);
+      ctx.lineTo(sgn * 26, -92);
+      ctx.quadraticCurveTo(sgn * 28, -124, sgn * 22, -154);
+      ctx.closePath(); ctx.fill();
+      // inner shadow fold (along the open edge)
+      ctx.fillStyle = shirtSh;
+      ctx.beginPath();
+      ctx.moveTo(sgn * 9, -150); ctx.quadraticCurveTo(sgn * 12, -118, sgn * 15, -90);
+      ctx.lineTo(sgn * 19, -91); ctx.quadraticCurveTo(sgn * 16, -120, sgn * 14, -150);
+      ctx.closePath(); ctx.fill();
+      // bright outer highlight edge
+      ctx.strokeStyle = shirtHi; ctx.lineWidth = 1.6;
+      ctx.beginPath(); ctx.moveTo(sgn * 22, -152); ctx.quadraticCurveTo(sgn * 27, -124, sgn * 25, -94); ctx.stroke();
+      // a couple of buttons hint near the hem
+      ctx.fillStyle = shirtHi;
+      ctx.beginPath(); ctx.arc(sgn * 13, -100, 1.3, 0, 7); ctx.fill();
+    };
+    panel(-1); panel(1);
     // collar
     ctx.fillStyle = shirtSh;
-    ctx.beginPath(); ctx.moveTo(-20, -152); ctx.lineTo(-2, -150); ctx.lineTo(-8, -138); ctx.closePath(); ctx.fill();
-    ctx.beginPath(); ctx.moveTo(20, -152); ctx.lineTo(2, -150); ctx.lineTo(8, -138); ctx.closePath(); ctx.fill();
-
-    // ---- arms (animated) ----
-    drawArm(-15, -146, P.la, dancer.energy, skin, shirt, -1, beatPhase);
-    drawArm(15, -146, P.ra, dancer.energy, skin, shirt, 1, beatPhase);
+    ctx.beginPath(); ctx.moveTo(-21, -154); ctx.lineTo(-3, -150); ctx.lineTo(-10, -138); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(21, -154); ctx.lineTo(3, -150); ctx.lineTo(10, -138); ctx.closePath(); ctx.fill();
 
     // ---- neck + head ----
-    ctx.fillStyle = skin; ctx.fillRect(-6, -162, 12, 14);
+    ctx.fillStyle = skin; ctx.fillRect(-6, -164, 12, 15);
+    ctx.fillStyle = skinSh; ctx.fillRect(-6, -151, 12, 3);
     ctx.save();
-    ctx.translate(0, -178); ctx.rotate(P.head * dancer.energy);
+    ctx.translate(0, -180); ctx.rotate(P.head * dancer.energy + sway * 0.5);
     // head
     ctx.fillStyle = skin;
-    ctx.beginPath(); ctx.ellipse(0, 0, 16, 18, 0, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(0, 0, 16, 18.5, 0, 0, 7); ctx.fill();
+    // jaw shadow
+    ctx.fillStyle = skinSh;
+    ctx.beginPath(); ctx.ellipse(0, 10, 11, 6, 0, 0, 7); ctx.fill();
     // ears
-    ctx.beginPath(); ctx.ellipse(-16, 0, 3, 5, 0, 0, 7); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(16, 0, 3, 5, 0, 0, 7); ctx.fill();
-    // hair (brown, swept)
-    ctx.fillStyle = '#4a3322';
+    ctx.fillStyle = skin;
+    ctx.beginPath(); ctx.ellipse(-16, 1, 3.2, 5, 0, 0, 7); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(16, 1, 3.2, 5, 0, 0, 7); ctx.fill();
+    // hair (brown, short, slightly messy) + sideburns
+    ctx.fillStyle = '#46301d';
     ctx.beginPath();
-    ctx.moveTo(-17, -2);
-    ctx.quadraticCurveTo(-20, -20, 0, -20);
-    ctx.quadraticCurveTo(20, -20, 17, -2);
-    ctx.quadraticCurveTo(10, -12, 0, -11);
-    ctx.quadraticCurveTo(-8, -11, -17, -2);
+    ctx.moveTo(-17, 1);
+    ctx.lineTo(-17, -7);
+    ctx.quadraticCurveTo(-18, -24, 0, -23);
+    ctx.quadraticCurveTo(19, -24, 17, -6);
+    ctx.lineTo(17, 1);
+    ctx.quadraticCurveTo(13, -9, 8, -10);
+    ctx.quadraticCurveTo(2, -13, -2, -11);
+    ctx.quadraticCurveTo(-10, -10, -13, -3);
+    ctx.quadraticCurveTo(-15, 0, -17, 1);
     ctx.fill();
-    // glasses
-    ctx.strokeStyle = '#1b1b1b'; ctx.lineWidth = 2.2;
-    ctx.beginPath(); ctx.arc(-7, 0, 5.2, 0, 7); ctx.stroke();
-    ctx.beginPath(); ctx.arc(7, 0, 5.2, 0, 7); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(-1.8, 0); ctx.lineTo(1.8, 0); ctx.stroke();
-    // mouth (open, having a blast) — bigger with hype
-    ctx.fillStyle = '#5a2230';
-    const m = 2 + crowdHype * 0.03 + dancer.energy * 2;
-    ctx.beginPath(); ctx.ellipse(0, 8, 4, m, 0, 0, 7); ctx.fill();
+    // hair highlight
+    ctx.fillStyle = 'rgba(120,82,48,0.6)';
+    ctx.beginPath(); ctx.ellipse(-6, -16, 6, 4, -0.4, 0, 7); ctx.fill();
+    // eyebrows
+    ctx.fillStyle = '#3a2616';
+    ctx.fillRect(-11, -3, 7, 1.8); ctx.fillRect(4, -3, 7, 1.8);
+    // glasses (filled dark lenses, black frame)
+    ctx.fillStyle = '#15151a';
+    roundRectPath(-12.5, -1.5, 10, 8, 2.4); ctx.fill();
+    roundRectPath(2.5, -1.5, 10, 8, 2.4); ctx.fill();
+    ctx.strokeStyle = '#0c0c10'; ctx.lineWidth = 1.4;
+    ctx.beginPath(); ctx.moveTo(-2.5, 1.5); ctx.lineTo(2.5, 1.5); ctx.stroke();      // bridge
+    ctx.moveTo(-12.5, 1.5); ctx.lineTo(-16, 0); ctx.moveTo(12.5, 1.5); ctx.lineTo(16, 0); ctx.stroke(); // temples
+    // lens glint
+    ctx.strokeStyle = 'rgba(255,255,255,0.45)'; ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.moveTo(-10.5, 0.5); ctx.lineTo(-7.5, -0.5); ctx.moveTo(4.5, 0.5); ctx.lineTo(7.5, -0.5); ctx.stroke();
+    // open mouth (loving it) — grows with hype
+    ctx.fillStyle = '#52202c';
+    const m = 2.2 + crowdHype * 0.03 + dancer.energy * 2.2;
+    ctx.beginPath(); ctx.ellipse(0, 9, 4.2, m, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.ellipse(0, 9 - m * 0.5, 3.2, 1.4, 0, 0, 7); ctx.fill(); // teeth
     ctx.restore();
 
     ctx.restore();
   }
 
-  function drawArm(sx, sy, ang, energy, skin, shirt, side, beatPhase) {
+  function drawArm(sx, sy, ang, energy, skin, skinSh, shirt, shirtSh, side, beatPhase) {
     // ang = [shoulder, elbow] target; idle adds a little beat motion
-    const wob = Math.sin(beatPhase * Math.PI * 2 + (side > 0 ? 0 : Math.PI)) * 0.18;
-    const sh = ang[0] * (0.35 + 0.65 * energy) + wob * (1 - energy * 0.5);
-    const el = ang[1] * (0.35 + 0.65 * energy);
+    const wob = Math.sin(beatPhase * Math.PI * 2 + (side > 0 ? 0 : Math.PI)) * 0.16;
+    const sh = ang[0] * (0.4 + 0.6 * energy) + wob * (1 - energy * 0.5);
+    const el = ang[1] * (0.4 + 0.6 * energy);
     const upper = 30, fore = 28;
     ctx.save(); ctx.translate(sx, sy);
     ctx.rotate(sh);
-    // upper arm (short shirt sleeve then skin)
-    ctx.strokeStyle = shirt; ctx.lineWidth = 14; ctx.lineCap = 'round';
-    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, 14); ctx.stroke();
-    ctx.strokeStyle = skin; ctx.lineWidth = 12;
-    ctx.beginPath(); ctx.moveTo(0, 12); ctx.lineTo(0, upper); ctx.stroke();
-    // forearm
+    // upper arm — pink long sleeve
+    ctx.strokeStyle = shirt; ctx.lineWidth = 15; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, upper); ctx.stroke();
+    // sleeve seam shading
+    ctx.strokeStyle = shirtSh; ctx.lineWidth = 3.5;
+    ctx.beginPath(); ctx.moveTo(side * 4, 4); ctx.lineTo(side * 4, upper - 3); ctx.stroke();
+    // forearm — sleeve to a rolled cuff, then skin + hand
     ctx.translate(0, upper); ctx.rotate(el);
-    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, fore); ctx.stroke();
+    ctx.strokeStyle = shirt; ctx.lineWidth = 14;
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, fore * 0.5); ctx.stroke();
+    ctx.strokeStyle = shirtSh; ctx.lineWidth = 16;     // rolled cuff
+    ctx.beginPath(); ctx.moveTo(0, fore * 0.46); ctx.lineTo(0, fore * 0.6); ctx.stroke();
+    ctx.strokeStyle = skin; ctx.lineWidth = 11;        // skin forearm
+    ctx.beginPath(); ctx.moveTo(0, fore * 0.6); ctx.lineTo(0, fore); ctx.stroke();
     // hand
     ctx.fillStyle = skin;
     ctx.beginPath(); ctx.arc(0, fore, 7, 0, 7); ctx.fill();
+    ctx.fillStyle = skinSh;
+    ctx.beginPath(); ctx.arc(side * 2, fore + 2, 3, 0, 7); ctx.fill();
     ctx.restore();
   }
 
