@@ -18,7 +18,17 @@
     position: fixed; inset: 0;
     display: flex; align-items: center; justify-content: center;
   }
+  #stage { position: relative; line-height: 0; }
   canvas { display: block; touch-action: none; }
+  .iconbtn {
+    position: absolute; top: 8px; left: 8px; z-index: 12;
+    width: 38px; height: 38px; border-radius: 50%;
+    border: none; cursor: pointer; font-size: 18px; line-height: 1;
+    color: #fff; background: rgba(6,16,24,0.38);
+    display: flex; align-items: center; justify-content: center;
+    backdrop-filter: blur(2px); pointer-events: auto;
+  }
+  .iconbtn:active { transform: scale(0.92); }
   /* Overlays */
   .screen {
     position: absolute; inset: 0;
@@ -48,6 +58,11 @@
     transform: translateY(0); transition: transform .06s, box-shadow .06s;
   }
   .btn:active { transform: translateY(6px); box-shadow: 0 2px 0 #c2386f, 0 6px 16px rgba(0,0,0,.45); }
+  .btn2 {
+    background: linear-gradient(180deg,#fff3,#fff0), linear-gradient(180deg,#7fe0ff,#5fa8ff);
+    color: #08263a; box-shadow: 0 8px 0 #2f6f9c, 0 14px 30px rgba(0,0,0,.45);
+  }
+  .btn2:active { transform: translateY(6px); box-shadow: 0 2px 0 #2f6f9c, 0 6px 16px rgba(0,0,0,.45); }
   .how {
     font-size: clamp(12px,3.6vw,15px); opacity:.85; max-width: 320px; line-height:1.5;
     background: rgba(0,0,0,.28); padding:14px 18px; border-radius:16px;
@@ -61,7 +76,10 @@
 </head>
 <body>
 <div id="wrap">
-  <canvas id="game"></canvas>
+  <div id="stage">
+    <canvas id="game"></canvas>
+    <button id="muteBtn" class="iconbtn" aria-label="Toggle sound">🔊</button>
+  </div>
 
   <!-- TITLE -->
   <div id="title" class="screen">
@@ -84,7 +102,10 @@
     <div class="big" id="finalScore">0</div>
     <div class="small">Max Combo <b id="finalCombo">0</b> · Best <b id="finalBest">0</b></div>
     <div id="newBest" class="tag hidden" style="color:#ffd34d;font-weight:900">⭐ NEW BEST! ⭐</div>
-    <button class="btn" id="againBtn">↻ DANCE AGAIN</button>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center">
+      <button class="btn" id="againBtn">↻ DANCE AGAIN</button>
+      <button class="btn btn2" id="shareBtn">↗ SHARE</button>
+    </div>
   </div>
 </div>
 
@@ -128,11 +149,13 @@
   let nextNoteTime = 0;           // next scheduled beat time
   let beatIndex = 0;              // running 16th-note index
   let musicTimer = null;
+  let muted = localStorage.getItem('ppdo_muted') === '1';
+  const MASTER_VOL = 0.9;
 
   function initAudio() {
     if (AC) { if (AC.state === 'suspended') AC.resume(); return; }
     AC = new (window.AudioContext || window.webkitAudioContext)();
-    master = AC.createGain(); master.gain.value = 0.9; master.connect(AC.destination);
+    master = AC.createGain(); master.gain.value = muted ? 0 : MASTER_VOL; master.connect(AC.destination);
     musicGain = AC.createGain(); musicGain.gain.value = 0.85; musicGain.connect(master);
     // shared noise buffer for hats/claps
     noiseBuf = AC.createBuffer(1, AC.sampleRate * 0.4, AC.sampleRate);
@@ -254,8 +277,6 @@
     if (!AC) return;
     while (nextNoteTime < AC.currentTime + schedAhead) {
       scheduleStep(beatIndex, nextNoteTime);
-      // hand the beat grid to the gameplay note-spawner
-      onBeatScheduled(beatIndex, nextNoteTime);
       nextNoteTime += SPB / 4;   // 16th notes
       beatIndex++;
     }
@@ -267,7 +288,13 @@
   const laneGlow   = ['#ff9ccb', '#ffe79a', '#aee8ff', '#c8ffae'];
   const HIT_Y = H - 150;          // y of the hit line
   const SPAWN_Y = 360;            // y where notes appear
-  const TRAVEL = 1.45;            // seconds a note takes to fall
+  const TRAVEL = 2.15;            // seconds a note takes to fall (reaction time)
+
+  // Note generation runs on its own clock, a full TRAVEL ahead of the audio
+  // so notes fall the whole field instead of popping in near the hit line.
+  let noteStep = 0;               // running 16th index for note placement
+  let noteTime = 0;               // audio time of the next 16th to consider
+  let spawnGate = 0;              // notes only start after the count-in
 
   let state = 'title';            // title | playing | over
   let notes = [];                 // active falling notes
@@ -287,36 +314,45 @@
 
   document.getElementById('titleBest').textContent = best;
 
-  // Difficulty curve: notes-per-step density grows over time.
+  // Difficulty curve: gentle ramp. `sec` is seconds since the first note.
+  // Returns chance of adding an off-beat note. Kept low so it stays tappable.
   function densityAt(sec) {
-    return Math.min(0.85, 0.28 + sec * 0.006);
+    return Math.min(0.55, 0.05 + sec * 0.0035);
   }
 
-  // Decide if a beat-step should carry a note, and which lane.
-  // Called when the scheduler lays a 16th step; we look ahead so the note
-  // reaches HIT_Y exactly at audio time `t`.
-  function onBeatScheduled(step, t) {
-    if (state !== 'playing') return;
-    const six = step % 16;
-    // Always place notes on strong beats; fill with offbeats by density.
-    const onQuarter = (six % 4 === 0);
-    const onEighth = (six % 2 === 0);
-    let place = false;
-    if (onQuarter) place = true;
-    else if (onEighth && Math.random() < densityAt(elapsed) * 0.8) place = true;
-    else if (Math.random() < densityAt(elapsed) * 0.35) place = true;
-    if (!place) return;
-    if (spawnedSteps.has(step)) return;
-    spawnedSteps.add(step);
-
-    // Choose lane(s). Mostly single, sometimes double on the drop.
-    let lane = (Math.random() * LANES) | 0;
-    addNote(lane, t);
-    // occasional double-note (jump) when hype high
-    if (onQuarter && elapsed > 18 && Math.random() < 0.16) {
-      let l2 = (lane + 1 + ((Math.random() * (LANES - 1)) | 0)) % LANES;
-      addNote(l2, t);
+  // Stream notes a full TRAVEL ahead of the current audio time so each one
+  // falls the whole field. Called every frame.
+  function generateNotes() {
+    if (state !== 'playing' || !AC) return;
+    const horizon = AC.currentTime + TRAVEL + 0.25;
+    while (noteTime < horizon) {
+      decideNote(noteStep, noteTime);
+      noteStep++;
+      noteTime += SPB / 4;        // walk the 16th-note grid
     }
+  }
+
+  let lastNoteLane = -1;
+  // Decide whether a given 16th step carries a note (and which lane).
+  function decideNote(step, t) {
+    if (t < spawnGate) return;            // hold notes during the count-in
+    const sec = Math.max(0, t - spawnGate);
+    const six = step % 16;
+    const onBeat = (six % 4 === 0);       // the four quarter beats
+    const onDownbeat = (six === 0 || six === 8); // beats 1 & 3 (backbone)
+    const onEighth = (six % 2 === 0);
+
+    let place = false;
+    if (onDownbeat) place = true;                              // ~2 notes/bar always
+    else if (onBeat && Math.random() < densityAt(sec)) place = true;        // beats 2/4
+    else if (onEighth && Math.random() < densityAt(sec) * 0.5) place = true; // 8ths later
+    if (!place) return;
+
+    // Pick a lane; avoid repeating the exact same lane back-to-back.
+    let lane = (Math.random() * LANES) | 0;
+    if (lane === lastNoteLane && Math.random() < 0.7) lane = (lane + 1) % LANES;
+    lastNoteLane = lane;
+    addNote(lane, t);
   }
 
   function addNote(lane, hitTime) {
@@ -372,7 +408,7 @@
       const dt = Math.abs(n.hitTime - now);
       if (dt < bestDt) { bestDt = dt; best = n; }
     }
-    const PERFECT = 0.075, GOOD = 0.16;
+    const PERFECT = 0.10, GOOD = 0.22;
     if (best && bestDt <= GOOD) {
       best.judged = true; best.dead = true;
       if (bestDt <= PERFECT) registerHit(2, best);
@@ -390,7 +426,7 @@
     const mult = 1 + Math.floor(combo / 10) * 0.5;
     score += Math.round(gain * mult);
     maxCombo = Math.max(maxCombo, combo);
-    hype = Math.min(100, hype + (quality === 2 ? 3.2 : 2.0));
+    hype = Math.min(100, hype + (quality === 2 ? 4.5 : 3.0));
     comboFlash = 1;
     hitSfx(quality);
     dancer.poke(quality);
@@ -402,15 +438,19 @@
   }
 
   function registerMiss(fromNote, lane) {
-    combo = 0;
-    hype = Math.max(0, hype - (fromNote ? 8 : 4));
-    missSfx();
-    if (lane != null) {
-      popups.push({ x: laneX(lane), y: HIT_Y - 20, txt: fromNote ? 'MISS' : 'X',
+    if (fromNote) {
+      // a real note slipped past — break the combo and dock hype
+      combo = 0;
+      hype = Math.max(0, hype - 5);
+      missSfx();
+      popups.push({ x: laneX(lane), y: HIT_Y - 20, txt: 'MISS',
                     col: '#ff5b6e', life: .8, vy: -22 });
+      shake = Math.min(shake + 4, 9);
+      if (hype <= 0 && state === 'playing') gameOver();
+    } else {
+      // just an empty tap — tiny nudge, keep the combo
+      hype = Math.max(0, hype - 1);
     }
-    shake = Math.min(shake + 4, 9);
-    if (hype <= 0 && state === 'playing') gameOver();
   }
 
   // pointer / touch
@@ -445,6 +485,12 @@
     { la:[-1.9,-0.5], ra:[0.2, 1.6], sway:-0.10, lift:0.2, head:-0.06}, // mirror point
     { la:[-0.9,-1.7], ra:[0.9, 1.7], sway:0.0,   lift:0, head:0.0 },  // hands near chest
     { la:[-2.7,-0.3], ra:[0.5, 1.0], sway:0.12,  lift:0, head:0.05 }, // one fist pump
+    { la:[ 0.5, 1.4], ra:[-0.5,-1.4], sway:0.0,  lift:0, head:0.0 },  // hands low/clap down
+    { la:[-2.9,-0.2], ra:[2.9, 0.2], sway:0.0,   lift:0.35, head:-0.05 }, // big Y + knee up
+    { la:[-1.3,-2.2], ra:[1.3, 2.2], sway:0.06,  lift:0, head:0.04 }, // both fists at face
+    { la:[-2.6,-1.4], ra:[0.6, 1.2], sway:-0.12, lift:0, head:-0.07 }, // roof-raise one arm
+    { la:[-0.7, 1.2], ra:[2.5,-0.4], sway:0.10,  lift:0.2, head:0.05 }, // sprinkler-ish twist
+    { la:[-1.6,-0.9], ra:[1.6, 0.9], sway:0.0,   lift:0, head:0.0 },  // T-pose strut
   ];
 
   function lerp(a, b, t) { return a + (b - a) * t; }
@@ -842,11 +888,11 @@
     ctx.font = '900 30px Trebuchet MS, sans-serif';
     ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
     ctx.strokeStyle = 'rgba(0,0,0,.45)'; ctx.lineWidth = 4;
-    ctx.strokeText(score.toLocaleString(), 14, 26);
-    ctx.fillText(score.toLocaleString(), 14, 26);
+    ctx.strokeText(score.toLocaleString(), 54, 26);
+    ctx.fillText(score.toLocaleString(), 54, 26);
     ctx.font = '700 11px Trebuchet MS, sans-serif';
     ctx.fillStyle = '#cfe2f0';
-    ctx.fillText('SCORE', 15, 46);
+    ctx.fillText('SCORE', 55, 46);
 
     // combo (center, punchy)
     if (combo > 1) {
@@ -892,22 +938,26 @@
     let dt = lastTime ? Math.min(0.05, tSec - lastTime) : 0.016;
     lastTime = tSec;
 
+    const counting = state === 'playing' && AC && AC.currentTime < spawnGate;
     if (state === 'playing') {
-      elapsed = AC ? (AC.currentTime - audioStart) : elapsed + dt;
-      // passive hype drain so you must keep hitting
-      hype = Math.max(0, hype - dt * (1.6 + elapsed * 0.02));
-      if (hype <= 0) { gameOver(); }
+      elapsed = AC ? Math.max(0, AC.currentTime - spawnGate) : elapsed + dt;
+      generateNotes();
+      if (!counting) {
+        // passive hype drain so you must keep hitting (gentle, slow ramp)
+        hype = Math.max(0, hype - dt * (0.9 + elapsed * 0.012));
+        if (hype <= 0) { gameOver(); }
+      }
       // crowd hype smoothing
       crowdHype += ((combo > 8 ? 100 : hype) - crowdHype) * 0.05;
       // confetti when on fire
       if (combo >= 20 && Math.random() < 0.5) confettiRain();
     }
 
-    // expire missed notes
+    // expire missed notes (past the GOOD window)
     if (AC && state === 'playing') {
       const now = AC.currentTime;
       for (const n of notes) {
-        if (!n.judged && now - n.hitTime > 0.17) {
+        if (!n.judged && now - n.hitTime > 0.26) {
           n.judged = true; n.dead = true;
           registerMiss(true, n.lane);
         }
@@ -933,9 +983,30 @@
     drawPopups(dt);
 
     if (state === 'playing') drawHUD();
+    if (counting) drawCountIn(AC.currentTime);
     ctx.restore();
   }
   requestAnimationFrame(frame);
+
+  // 3 · 2 · 1 · GO! count-in before the first note lands.
+  function drawCountIn(now) {
+    const remain = spawnGate - now;
+    const beatsLeft = remain / SPB;          // ~4 beats of lead-in
+    const n = Math.ceil(beatsLeft - 0.0001);
+    const label = n >= 4 ? 'GET READY' : (n <= 0 ? 'GO!' : String(n));
+    const frac = beatsLeft - Math.floor(beatsLeft); // 1 -> 0 within the beat
+    const pop = 1 + (1 - frac) * 0.6;
+    ctx.save();
+    ctx.translate(W / 2, SPAWN_Y - 70);
+    ctx.globalAlpha = Math.min(1, frac + 0.2);
+    ctx.scale(pop, pop);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.lineWidth = 6; ctx.strokeStyle = 'rgba(0,0,0,.45)';
+    ctx.fillStyle = n >= 4 ? '#fff' : '#ffd34d';
+    ctx.font = (n >= 4 ? '900 30px' : '900 76px') + ' Trebuchet MS, sans-serif';
+    ctx.strokeText(label, 0, 0); ctx.fillText(label, 0, 0);
+    ctx.restore();
+  }
 
   // ============================ FLOW ======================================
   function startGame() {
@@ -943,16 +1014,21 @@
     document.getElementById('title').classList.add('hidden');
     document.getElementById('over').classList.add('hidden');
     notes = []; particles = []; popups = []; spawnedSteps.clear();
-    score = 0; combo = 0; maxCombo = 0; hype = 65; elapsed = 0; shake = 0; crowdHype = 0;
-    dancer.pose = 0; dancer.energy = 0;
+    score = 0; combo = 0; maxCombo = 0; hype = 70; elapsed = 0; shake = 0; crowdHype = 0;
+    dancer.pose = 0; dancer.energy = 0; lastNoteLane = -1;
     state = 'playing';
     // start groove
     beatIndex = 0;
     audioStart = AC.currentTime + 0.12;
     nextNoteTime = audioStart;
+    // notes hold for a 4-beat count-in, then stream in a full TRAVEL ahead
+    spawnGate = audioStart + SPB * 4;
+    noteStep = 0;
+    noteTime = audioStart;
     if (musicTimer) clearInterval(musicTimer);
     musicTimer = setInterval(musicScheduler, 25);
     musicScheduler();
+    generateNotes();
   }
 
   function gameOver() {
@@ -979,6 +1055,34 @@
 
   document.getElementById('startBtn').addEventListener('click', startGame);
   document.getElementById('againBtn').addEventListener('click', startGame);
+
+  // ---- Mute toggle ----
+  const muteBtn = document.getElementById('muteBtn');
+  function refreshMuteBtn() { muteBtn.textContent = muted ? '🔇' : '🔊'; }
+  refreshMuteBtn();
+  muteBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    muted = !muted;
+    localStorage.setItem('ppdo_muted', muted ? '1' : '0');
+    if (master) master.gain.value = muted ? 0 : MASTER_VOL;
+    refreshMuteBtn();
+  });
+
+  // ---- Share score ----
+  const shareBtn = document.getElementById('shareBtn');
+  shareBtn.addEventListener('click', async () => {
+    const txt = `I scored ${score.toLocaleString()} (combo x${maxCombo}) in Pool Party Dance-Off! 🕺🔥 Can you out-dance me?`;
+    const url = location.href.split('#')[0];
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: 'Pool Party Dance-Off', text: txt, url });
+      } else {
+        await navigator.clipboard.writeText(txt + ' ' + url);
+        shareBtn.textContent = '✓ COPIED';
+        setTimeout(() => { shareBtn.textContent = '↗ SHARE'; }, 1500);
+      }
+    } catch (_) { /* user dismissed share sheet — ignore */ }
+  });
 
   // Optional autoplay (demo / self-test): open with #auto in the URL.
   if (location.hash === '#auto') {
