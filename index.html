@@ -306,6 +306,8 @@
   let score = 0, combo = 0, maxCombo = 0, hype = 60; // hype 0..100
   let best = +(localStorage.getItem('ppdo_best') || 0);
   let elapsed = 0;                // seconds since start
+  // "Showtime" dance break: notes clear out and he solos for a few seconds
+  let breakActive = false, breakEnd = 0, breakBeat = -1, nextBreakScore = 2000;
   let lastTime = 0;
   let shake = 0;
   let crowdHype = 0;              // smoothed visual hype
@@ -337,6 +339,7 @@
   let lastNoteLane = -1;
   // Decide whether a given 16th step carries a note (and which lane).
   function decideNote(step, t) {
+    if (breakActive) return;              // hold notes during a dance break
     if (t < spawnGate) return;            // hold notes during the count-in
     const sec = Math.max(0, t - spawnGate);
     const six = step % 16;
@@ -434,20 +437,14 @@
     const x = laneX(n.lane);
     popups.push({ x, y: HIT_Y - 30, txt: quality === 2 ? 'PERFECT' : 'GOOD',
                   col: quality === 2 ? '#ffd34d' : '#9bff6b', life: 1, vy: -34 });
-    burst(x, HIT_Y, laneColors[n.lane], quality === 2 ? 18 : 9);
-    rings.push({ x, y: HIT_Y, r: 8, vr: quality === 2 ? 5.5 : 3.5,
-                 col: quality === 2 ? '#ffe27a' : laneGlow[n.lane], life: 1 });
+    burst(x, HIT_Y, laneColors[n.lane], quality === 2 ? 10 : 6);
+    // a single subtle ring on perfects only
     if (quality === 2) {
-      shake = Math.min(shake + 3, 8);
-      // a shockwave around the dancer himself + a little confetti pop
-      rings.push({ x: W / 2, y: HIT_Y - 168, r: 16, vr: 4.2, col: '#fff3c4', life: 1 });
-      confettiRain();
+      rings.push({ x, y: HIT_Y, r: 8, vr: 4, col: '#ffe27a', life: 1 });
     }
-    // every 10-combo milestone: extra celebration
+    // 10-combo milestones: a small celebration (the only time confetti falls)
     if (combo > 0 && combo % 10 === 0) {
-      shake = Math.min(shake + 4, 9);
-      for (let k = 0; k < 4; k++) confettiRain();
-      rings.push({ x: W / 2, y: HIT_Y - 168, r: 10, vr: 6, col: '#ff8fc6', life: 1 });
+      confettiRain();
       popups.push({ x: W / 2, y: HIT_Y - 250, txt: combo + ' COMBO!', col: '#ffd34d', life: 1.2, vy: -20 });
     }
   }
@@ -732,40 +729,33 @@
     // smooth interpolate toward current pose
     const P = DANCE_POSES[dancer.pose];
     dancer.energy = Math.max(0, dancer.energy - 0.05);
-    dancer.pop = Math.max(0, dancer.pop - 0.075);
-    dancer.flash = Math.max(0, dancer.flash - 0.05);
-    // hit punch — a snappy hop + squash-and-stretch on every catch
-    const punch = dancer.pop * dancer.pop;         // ease-out
-    const hop = punch * 26 * (0.6 + dancer.jump);  // jump up on hit
-    const sx2 = 1 - punch * 0.10 * dancer.jump;    // squash X
-    const sy2 = 1 + punch * 0.14 * dancer.jump;    // stretch Y
-    // idle bop
-    const bopAmt = 4 + crowdHype * 0.05;
+    dancer.flash = Math.max(0, dancer.flash - 0.06);
+    // gentle groove — he stays vertically planted; expression is in the
+    // arms, sway and pose changes (no jumping).
     const beatPhase = AC ? ((AC.currentTime - audioStart) / SPB) : t / SPB;
-    const bop = Math.abs(Math.sin(beatPhase * Math.PI)) * bopAmt;
-    const sway = Math.sin(beatPhase * Math.PI) * (0.04 + P.sway * dancer.energy);
+    const bop = Math.abs(Math.sin(beatPhase * Math.PI)) * 2;      // tiny, not a jump
+    const sway = Math.sin(beatPhase * Math.PI) * (0.05 + P.sway * dancer.energy);
 
-    // ground shadow (shrinks as he jumps)
+    // ground shadow
     ctx.save(); ctx.translate(cx, groundY + 3);
-    ctx.globalAlpha = 0.18 * (1 - punch * 0.5); ctx.fillStyle = '#04263a';
-    ctx.beginPath(); ctx.ellipse(0, 0, 44 * (1 - punch * 0.25), 9, 0, 0, 7); ctx.fill();
+    ctx.globalAlpha = 0.18; ctx.fillStyle = '#04263a';
+    ctx.beginPath(); ctx.ellipse(0, 0, 44, 9, 0, 0, 7); ctx.fill();
     ctx.restore();
 
-    // halo flash burst behind him on each hit (gold = perfect, green = good)
+    // subtle halo glow behind him on a hit (gold = perfect, green = good)
     if (dancer.flash > 0.01) {
       const hc = dancer.lastQ === 2 ? '255,211,77' : '155,255,107';
-      const hr = 70 + (1 - dancer.flash) * 90;
-      const hg = ctx.createRadialGradient(cx, groundY - 120, 8, cx, groundY - 120, hr);
-      hg.addColorStop(0, `rgba(${hc},${0.45 * dancer.flash})`);
+      const hg = ctx.createRadialGradient(cx, groundY - 120, 8, cx, groundY - 120, 62);
+      hg.addColorStop(0, `rgba(${hc},${0.22 * dancer.flash})`);
       hg.addColorStop(1, `rgba(${hc},0)`);
       ctx.fillStyle = hg;
-      ctx.beginPath(); ctx.arc(cx, groundY - 120, hr, 0, 7); ctx.fill();
+      ctx.beginPath(); ctx.arc(cx, groundY - 120, 62, 0, 7); ctx.fill();
     }
 
     ctx.save();
-    ctx.translate(cx, groundY - bop - hop);
+    ctx.translate(cx, groundY - bop);
     ctx.rotate(sway);
-    ctx.scale(1.4 * sx2, 1.4 * sy2);  // hero presence + hit squash/stretch
+    ctx.scale(1.4, 1.4);              // hero presence — big and close
 
     const skin = '#dca067', skinSh = '#c0824b', skinHi = '#ecbb86';
     const shirt = '#f491b8', shirtSh = '#dd6fa0', shirtHi = '#ffb7d4';
@@ -1160,16 +1150,28 @@
     const counting = state === 'playing' && AC && AC.currentTime < spawnGate;
     if (state === 'playing') {
       elapsed = AC ? Math.max(0, AC.currentTime - spawnGate) : elapsed + dt;
-      generateNotes();
-      if (!counting) {
+      generateNotes();   // (decideNote pauses itself during a break)
+
+      // trigger a showtime dance break once you cross a score milestone
+      if (!breakActive && !counting && score >= nextBreakScore) {
+        startBreak();
+        nextBreakScore += 3000;
+      }
+
+      if (breakActive) {
+        // he solos: refill hype, no drain, change pose on every beat
+        hype = Math.min(100, hype + dt * 9);
+        crowdHype += (100 - crowdHype) * 0.06;
+        const beat = Math.floor((AC.currentTime - audioStart) / SPB);
+        if (beat !== breakBeat) { breakBeat = beat; dancer.poke(2); }
+        dancer.energy = 1;                // stay fully expressive
+        if (AC.currentTime >= breakEnd) endBreak();
+      } else if (!counting) {
         // passive hype drain so you must keep hitting (gentle, slow ramp)
         hype = Math.max(0, hype - dt * (0.9 + elapsed * 0.012));
         if (hype <= 0) { gameOver(); }
+        crowdHype += ((combo > 8 ? 100 : hype) - crowdHype) * 0.05;
       }
-      // crowd hype smoothing
-      crowdHype += ((combo > 8 ? 100 : hype) - crowdHype) * 0.05;
-      // confetti when on fire
-      if (combo >= 20 && Math.random() < 0.5) confettiRain();
     }
 
     // expire missed notes (past the GOOD window)
@@ -1194,9 +1196,10 @@
 
     const nowAC = AC ? AC.currentTime : 0;
     drawBackground(tSec);
-    if (state !== 'title') drawLanesBack();   // lane structure behind him
+    if (state !== 'title' && !breakActive) drawLanesBack();   // lane structure behind him
+    if (breakActive) drawSpotlight();          // focus the eye on his solo
     drawDancer(tSec);
-    if (state !== 'title') drawPlay(nowAC);    // notes + catch line in front
+    if (state !== 'title' && !breakActive) drawPlay(nowAC);   // notes + catch line in front
 
     updateParticles(dt);
     drawParticles();
@@ -1205,9 +1208,38 @@
 
     if (state === 'playing') drawHUD();
     if (counting) drawCountIn(AC.currentTime);
+    if (breakActive) drawBreakBanner(nowAC);
     ctx.restore();
   }
   requestAnimationFrame(frame);
+
+  // Gentle vignette so the eye settles on the dancer during his solo.
+  function drawSpotlight() {
+    const g = ctx.createRadialGradient(W / 2, HIT_Y - 150, 60, W / 2, HIT_Y - 150, 320);
+    g.addColorStop(0, 'rgba(8,20,30,0)');
+    g.addColorStop(1, 'rgba(6,14,22,0.34)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  }
+
+  // "SHOWTIME" banner shown during a dance break.
+  function drawBreakBanner(now) {
+    const left = Math.max(0, breakEnd - now);
+    const pulse = 1 + Math.sin(now * 8) * 0.05;
+    ctx.save();
+    ctx.translate(W / 2, 150);
+    ctx.scale(pulse, pulse);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.lineWidth = 6; ctx.strokeStyle = 'rgba(0,0,0,.45)';
+    ctx.fillStyle = '#ffd34d';
+    ctx.font = '900 40px Trebuchet MS, sans-serif';
+    ctx.strokeText('SHOWTIME!', 0, 0); ctx.fillText('SHOWTIME!', 0, 0);
+    ctx.restore();
+    ctx.fillStyle = '#fff'; ctx.font = '700 14px Trebuchet MS, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.globalAlpha = 0.9;
+    ctx.fillText('just watch him cook 🔥  ' + Math.ceil(left) + 's', W / 2, 178);
+    ctx.globalAlpha = 1;
+  }
 
   // 3 · 2 · 1 · GO! count-in before the first note lands.
   function drawCountIn(now) {
@@ -1229,6 +1261,19 @@
     ctx.restore();
   }
 
+  // A few-second solo where the notes stop so you can just watch him dance.
+  function startBreak() {
+    breakActive = true;
+    breakEnd = AC.currentTime + 5.2;
+    breakBeat = -1;
+    notes = [];                    // clear the field
+    shake = 0;
+  }
+  function endBreak() {
+    breakActive = false;
+    // note generation resumes on its own; notes lead back in over TRAVEL.
+  }
+
   // ============================ FLOW ======================================
   function startGame() {
     initAudio();
@@ -1237,6 +1282,7 @@
     notes = []; particles = []; rings = []; popups = []; spawnedSteps.clear();
     score = 0; combo = 0; maxCombo = 0; hype = 70; elapsed = 0; shake = 0; crowdHype = 0;
     dancer.pose = 0; dancer.energy = 0; dancer.pop = 0; dancer.flash = 0; lastNoteLane = -1;
+    breakActive = false; breakBeat = -1; nextBreakScore = 2000;
     state = 'playing';
     // start groove
     beatIndex = 0;
