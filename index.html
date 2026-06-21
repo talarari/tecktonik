@@ -300,6 +300,7 @@
   let state = 'title';            // title | playing | over
   let notes = [];                 // active falling notes
   let particles = [];
+  let rings = [];                 // expanding shockwave rings on big hits
   let popups = [];                // score popups / judgements
 
   let score = 0, combo = 0, maxCombo = 0, hype = 60; // hype 0..100
@@ -433,8 +434,22 @@
     const x = laneX(n.lane);
     popups.push({ x, y: HIT_Y - 30, txt: quality === 2 ? 'PERFECT' : 'GOOD',
                   col: quality === 2 ? '#ffd34d' : '#9bff6b', life: 1, vy: -34 });
-    burst(x, HIT_Y, laneColors[n.lane], quality === 2 ? 16 : 9);
-    if (quality === 2) shake = Math.min(shake + 3, 8);
+    burst(x, HIT_Y, laneColors[n.lane], quality === 2 ? 18 : 9);
+    rings.push({ x, y: HIT_Y, r: 8, vr: quality === 2 ? 5.5 : 3.5,
+                 col: quality === 2 ? '#ffe27a' : laneGlow[n.lane], life: 1 });
+    if (quality === 2) {
+      shake = Math.min(shake + 3, 8);
+      // a shockwave around the dancer himself + a little confetti pop
+      rings.push({ x: W / 2, y: HIT_Y - 168, r: 16, vr: 4.2, col: '#fff3c4', life: 1 });
+      confettiRain();
+    }
+    // every 10-combo milestone: extra celebration
+    if (combo > 0 && combo % 10 === 0) {
+      shake = Math.min(shake + 4, 9);
+      for (let k = 0; k < 4; k++) confettiRain();
+      rings.push({ x: W / 2, y: HIT_Y - 168, r: 10, vr: 6, col: '#ff8fc6', life: 1 });
+      popups.push({ x: W / 2, y: HIT_Y - 250, txt: combo + ' COMBO!', col: '#ffd34d', life: 1.2, vy: -20 });
+    }
   }
 
   function registerMiss(fromNote, lane) {
@@ -472,8 +487,15 @@
   // Stylised version of the source: brown hair, glasses, open pink shirt,
   // bare chest, dark shorts. Poses cycle on each hit for a lively dance.
   const dancer = {
-    pose: 0, t: 0, poke(q) { this.pose = (this.pose + 1) % DANCE_POSES.length; this.energy = 1; this.bop = q === 2 ? 1 : 0.6; },
-    energy: 0, bop: 0,
+    pose: 0, t: 0, energy: 0, bop: 0, pop: 0, jump: 0, flash: 0, lastQ: 1,
+    poke(q) {
+      this.pose = (this.pose + 1) % DANCE_POSES.length;
+      this.energy = 1;
+      this.pop = 1;                       // scale/jump punch on every hit
+      this.jump = q === 2 ? 1 : 0.6;      // perfects hop higher
+      this.flash = 1;                     // halo flash behind him
+      this.lastQ = q;
+    },
   };
 
   // Each pose: arm angles (shoulder, elbow) + hip sway + leg lift.
@@ -710,22 +732,40 @@
     // smooth interpolate toward current pose
     const P = DANCE_POSES[dancer.pose];
     dancer.energy = Math.max(0, dancer.energy - 0.05);
+    dancer.pop = Math.max(0, dancer.pop - 0.075);
+    dancer.flash = Math.max(0, dancer.flash - 0.05);
+    // hit punch — a snappy hop + squash-and-stretch on every catch
+    const punch = dancer.pop * dancer.pop;         // ease-out
+    const hop = punch * 26 * (0.6 + dancer.jump);  // jump up on hit
+    const sx2 = 1 - punch * 0.10 * dancer.jump;    // squash X
+    const sy2 = 1 + punch * 0.14 * dancer.jump;    // stretch Y
     // idle bop
     const bopAmt = 4 + crowdHype * 0.05;
     const beatPhase = AC ? ((AC.currentTime - audioStart) / SPB) : t / SPB;
     const bop = Math.abs(Math.sin(beatPhase * Math.PI)) * bopAmt;
     const sway = Math.sin(beatPhase * Math.PI) * (0.04 + P.sway * dancer.energy);
 
-    // ground shadow
+    // ground shadow (shrinks as he jumps)
     ctx.save(); ctx.translate(cx, groundY + 3);
-    ctx.globalAlpha = 0.18; ctx.fillStyle = '#04263a';
-    ctx.beginPath(); ctx.ellipse(0, 0, 44, 9, 0, 0, 7); ctx.fill();
+    ctx.globalAlpha = 0.18 * (1 - punch * 0.5); ctx.fillStyle = '#04263a';
+    ctx.beginPath(); ctx.ellipse(0, 0, 44 * (1 - punch * 0.25), 9, 0, 0, 7); ctx.fill();
     ctx.restore();
 
+    // halo flash burst behind him on each hit (gold = perfect, green = good)
+    if (dancer.flash > 0.01) {
+      const hc = dancer.lastQ === 2 ? '255,211,77' : '155,255,107';
+      const hr = 70 + (1 - dancer.flash) * 90;
+      const hg = ctx.createRadialGradient(cx, groundY - 120, 8, cx, groundY - 120, hr);
+      hg.addColorStop(0, `rgba(${hc},${0.45 * dancer.flash})`);
+      hg.addColorStop(1, `rgba(${hc},0)`);
+      ctx.fillStyle = hg;
+      ctx.beginPath(); ctx.arc(cx, groundY - 120, hr, 0, 7); ctx.fill();
+    }
+
     ctx.save();
-    ctx.translate(cx, groundY - bop);
+    ctx.translate(cx, groundY - bop - hop);
     ctx.rotate(sway);
-    ctx.scale(1.4, 1.4);            // hero presence — big and close
+    ctx.scale(1.4 * sx2, 1.4 * sy2);  // hero presence + hit squash/stretch
 
     const skin = '#dca067', skinSh = '#c0824b', skinHi = '#ecbb86';
     const shirt = '#f491b8', shirtSh = '#dd6fa0', shirtHi = '#ffb7d4';
@@ -1017,6 +1057,16 @@
       p.life -= dt * (p.conf ? 0.5 : 1.6);
     }
     particles = particles.filter(p => p.life > 0 && p.y < H + 20);
+    for (const r of rings) { r.r += r.vr; r.vr *= 0.96; r.life -= dt * 2.2; }
+    rings = rings.filter(r => r.life > 0);
+  }
+  function drawRings() {
+    for (const r of rings) {
+      ctx.globalAlpha = Math.max(0, r.life) * 0.8;
+      ctx.strokeStyle = r.col; ctx.lineWidth = 3 * r.life + 1;
+      ctx.beginPath(); ctx.arc(r.x, r.y, r.r, 0, 7); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
   }
   function drawParticles() {
     for (const p of particles) {
@@ -1150,6 +1200,7 @@
 
     updateParticles(dt);
     drawParticles();
+    if (state !== 'title') drawRings();
     drawPopups(dt);
 
     if (state === 'playing') drawHUD();
@@ -1183,9 +1234,9 @@
     initAudio();
     document.getElementById('title').classList.add('hidden');
     document.getElementById('over').classList.add('hidden');
-    notes = []; particles = []; popups = []; spawnedSteps.clear();
+    notes = []; particles = []; rings = []; popups = []; spawnedSteps.clear();
     score = 0; combo = 0; maxCombo = 0; hype = 70; elapsed = 0; shake = 0; crowdHype = 0;
-    dancer.pose = 0; dancer.energy = 0; lastNoteLane = -1;
+    dancer.pose = 0; dancer.energy = 0; dancer.pop = 0; dancer.flash = 0; lastNoteLane = -1;
     state = 'playing';
     // start groove
     beatIndex = 0;
