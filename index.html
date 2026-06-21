@@ -306,9 +306,10 @@
   let score = 0, combo = 0, maxCombo = 0, hype = 60; // hype 0..100
   let best = +(localStorage.getItem('ppdo_best') || 0);
   let elapsed = 0;                // seconds since start
-  // "Showtime" dance break: notes clear out and he solos for a few seconds.
-  // First one comes early to show it off, then they get progressively rarer.
-  let breakActive = false, breakEnd = 0, breakBeat = -1, nextBreakScore = 1500, breakGap = 6000;
+  // Levels: clear a level's worth of notes -> "LEVEL X COMPLETE" showtime
+  // break -> the next, harder level begins.
+  let level = 1, levelHits = 0, levelTarget = 22, levelUpFlash = 0;
+  let breakActive = false, breakEnd = 0, breakBeat = -1;
   let lastTime = 0;
   let shake = 0;
   let crowdHype = 0;              // smoothed visual hype
@@ -319,20 +320,21 @@
 
   document.getElementById('titleBest').textContent = best;
 
-  // ---- Escalating difficulty (drives a fast-ending run) ----------------
-  // `elapsed` = seconds since the first note. Everything ramps with it:
-  // more notes, faster falls, harder drain, and smaller hype rewards.
-  function densityAt(sec) {
-    return Math.min(0.95, 0.12 + sec * 0.011);     // far more notes over time
+  // ---- Level-based escalating difficulty -------------------------------
+  // Each completed level steps everything up. Levels advance through the
+  // showtime breaks: clear a level -> "LEVEL X COMPLETE" break -> the next,
+  // harder level begins.
+  function densityAt() {
+    return Math.min(0.96, 0.18 + (level - 1) * 0.12);    // more notes per level
   }
   function curTravel() {
-    return Math.max(0.85, TRAVEL_MAX - elapsed * 0.017); // notes speed up
+    return Math.max(0.80, TRAVEL_MAX - (level - 1) * 0.16); // notes speed up
   }
   function hypeDrainRate() {
-    return 1.5 + elapsed * 0.045;                   // drain accelerates hard
+    return 1.0 + (level - 1) * 0.75;                      // drain ramps per level
   }
   function hypeGainMult() {
-    return Math.max(0.15, 1 - elapsed * 0.011);     // hits give much less over time
+    return Math.max(0.24, 1 - (level - 1) * 0.13);        // rewards shrink per level
   }
 
   // Stream notes a TRAVEL ahead of the current audio time so each one falls
@@ -352,16 +354,16 @@
   function decideNote(step, t) {
     if (breakActive) return;              // hold notes during a dance break
     if (t < spawnGate) return;            // hold notes during the count-in
-    const sec = Math.max(0, t - spawnGate);
     const six = step % 16;
     const onBeat = (six % 4 === 0);       // the four quarter beats
     const onDownbeat = (six === 0 || six === 8); // beats 1 & 3 (backbone)
     const onEighth = (six % 2 === 0);
+    const d = densityAt();
 
     let place = false;
-    if (onDownbeat) place = true;                              // ~2 notes/bar always
-    else if (onBeat && Math.random() < densityAt(sec)) place = true;        // beats 2/4
-    else if (onEighth && Math.random() < densityAt(sec) * 0.5) place = true; // 8ths later
+    if (onDownbeat) place = true;                       // ~2 notes/bar always
+    else if (onBeat && Math.random() < d) place = true;          // beats 2/4
+    else if (onEighth && Math.random() < d * 0.5) place = true;  // 8ths later
     if (!place) return;
 
     // Pick a lane; avoid repeating the exact same lane back-to-back.
@@ -370,8 +372,7 @@
     lastNoteLane = lane;
     addNote(lane, t);
 
-    // Late game: simultaneous double-notes on strong beats crank the pressure.
-    const d = densityAt(sec);
+    // Higher levels: simultaneous double-notes on strong beats crank pressure.
     if (onBeat && d > 0.55 && Math.random() < (d - 0.55) * 1.1) {
       const l2 = (lane + 1 + ((Math.random() * (LANES - 1)) | 0)) % LANES;
       addNote(l2, t);
@@ -446,6 +447,7 @@
   function registerHit(quality, n) {
     const gain = quality === 2 ? 100 : 50;
     combo++;
+    levelHits++;                                   // progress toward level clear
     const mult = 1 + Math.floor(combo / 10) * 0.5;
     score += Math.round(gain * mult);
     maxCombo = Math.max(maxCombo, combo);
@@ -1143,20 +1145,33 @@
     ctx.fillStyle = '#cfe2f0';
     ctx.fillText('SCORE', 55, 46);
 
-    // combo (center, punchy)
+    // LEVEL pill (top center) with a progress fill toward the next break
+    const pw = 96, ph = 20, px = W / 2 - pw / 2, py = 5;
+    ctx.fillStyle = 'rgba(6,16,24,0.5)';
+    roundRectPath(px, py, pw, ph, 10); ctx.fill();
+    ctx.save();
+    roundRectPath(px, py, pw, ph, 10); ctx.clip();
+    ctx.fillStyle = 'rgba(255,211,77,0.32)';
+    ctx.fillRect(px, py, pw * Math.min(1, levelHits / levelTarget), ph);
+    ctx.restore();
+    ctx.strokeStyle = 'rgba(255,255,255,0.45)'; ctx.lineWidth = 1.4;
+    roundRectPath(px, py, pw, ph, 10); ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.font = '900 13px Trebuchet MS, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('LEVEL ' + level, W / 2, py + ph / 2 + 0.5);
+
+    // combo (center, punchy) — sits below the level pill
     if (combo > 1) {
       comboFlash = Math.max(0, comboFlash - 0.05);
       const s = 1 + comboFlash * 0.4;
       ctx.save();
-      ctx.translate(W / 2, 34); ctx.scale(s, s);
+      ctx.translate(W / 2, 46); ctx.scale(s, s);
       ctx.fillStyle = combo >= 30 ? '#ffd34d' : '#fff';
-      ctx.font = '900 30px Trebuchet MS, sans-serif';
-      ctx.textAlign = 'center';
+      ctx.font = '900 26px Trebuchet MS, sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.strokeStyle = 'rgba(0,0,0,.5)'; ctx.lineWidth = 5;
       ctx.strokeText(combo + 'x', 0, 0); ctx.fillText(combo + 'x', 0, 0);
       ctx.restore();
-      ctx.fillStyle = '#cfe2f0'; ctx.font = '700 11px Trebuchet MS,sans-serif';
-      ctx.textAlign = 'center'; ctx.fillText('COMBO', W / 2, 52);
     }
 
     // HYPE meter (right)
@@ -1192,16 +1207,13 @@
       elapsed = AC ? Math.max(0, AC.currentTime - spawnGate) : elapsed + dt;
       generateNotes();   // (decideNote pauses itself during a break)
 
-      // trigger a showtime dance break once you cross a score milestone
-      if (!breakActive && !counting && score >= nextBreakScore) {
-        startBreak();
-        nextBreakScore += breakGap;
-        breakGap = Math.round(breakGap * 1.6);   // each break gets rarer
-      }
+      // clear a level's worth of notes -> showtime break (level complete)
+      if (!breakActive && !counting && levelHits >= levelTarget) startBreak();
+
+      if (levelUpFlash > 0) levelUpFlash = Math.max(0, levelUpFlash - dt);
 
       if (breakActive) {
-        // he solos: small hype top-up (not a full reset), no drain
-        hype = Math.min(100, hype + dt * 4);
+        // he solos: a breather (drain paused) — no big hype refill
         crowdHype += (100 - crowdHype) * 0.06;
         const beat = Math.floor((AC.currentTime - audioStart) / SPB);
         if (beat !== breakBeat) {
@@ -1257,6 +1269,7 @@
     if (state === 'playing') drawHUD();
     if (counting) drawCountIn(AC.currentTime);
     if (breakActive) drawBreakBanner(nowAC);
+    if (levelUpFlash > 0 && !breakActive) drawLevelUp();
     ctx.restore();
   }
   requestAnimationFrame(frame);
@@ -1269,24 +1282,47 @@
     ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
   }
 
-  // "SHOWTIME" banner shown during a dance break.
+  // "LEVEL X COMPLETE" banner shown during the level-clear break.
   function drawBreakBanner(now) {
     const left = Math.max(0, breakEnd - now);
     const pulse = 1 + Math.sin(now * 8) * 0.05;
     ctx.save();
-    ctx.translate(W / 2, 150);
-    ctx.scale(pulse, pulse);
+    ctx.translate(W / 2, 142);
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#fff'; ctx.font = '800 17px Trebuchet MS, sans-serif';
+    ctx.fillText('SHOWTIME!', 0, -34);
+    ctx.scale(pulse, pulse);
     ctx.lineWidth = 6; ctx.strokeStyle = 'rgba(0,0,0,.45)';
     ctx.fillStyle = '#ffd34d';
-    ctx.font = '900 40px Trebuchet MS, sans-serif';
-    ctx.strokeText('SHOWTIME!', 0, 0); ctx.fillText('SHOWTIME!', 0, 0);
+    ctx.font = '900 34px Trebuchet MS, sans-serif';
+    ctx.strokeText('LEVEL ' + level, 0, 0); ctx.fillText('LEVEL ' + level, 0, 0);
+    ctx.font = '900 22px Trebuchet MS, sans-serif';
+    ctx.strokeText('COMPLETE', 0, 28); ctx.fillText('COMPLETE', 0, 28);
     ctx.restore();
-    ctx.fillStyle = '#fff'; ctx.font = '700 14px Trebuchet MS, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.globalAlpha = 0.9;
-    ctx.fillText('just watch him cook 🔥  ' + Math.ceil(left) + 's', W / 2, 178);
+    ctx.fillStyle = '#fff'; ctx.font = '700 13px Trebuchet MS, sans-serif';
+    ctx.textAlign = 'center'; ctx.globalAlpha = 0.9;
+    ctx.fillText('next: LEVEL ' + (level + 1) + ' in ' + Math.ceil(left) + 's', W / 2, 184);
     ctx.globalAlpha = 1;
+  }
+
+  // Brief "LEVEL X" announcement + speed-lines when a new level starts.
+  function drawLevelUp() {
+    const a = Math.min(1, levelUpFlash / 0.5);          // fade in/out
+    const k = 1 - levelUpFlash / 1.6;                   // 0..1 progress
+    ctx.save();
+    ctx.globalAlpha = a * 0.5;
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+    for (let i = 0; i < 6; i++) {                        // speed lines sweeping down
+      const y = ((k * 900) + i * 130) % 900 - 60;
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y + 40); ctx.stroke();
+    }
+    ctx.globalAlpha = a;
+    ctx.translate(W / 2, 250);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#ffd34d'; ctx.lineWidth = 6; ctx.strokeStyle = 'rgba(0,0,0,.5)';
+    ctx.font = '900 44px Trebuchet MS, sans-serif';
+    ctx.strokeText('LEVEL ' + level, 0, 0); ctx.fillText('LEVEL ' + level, 0, 0);
+    ctx.restore();
   }
 
   // 3 · 2 · 1 · GO! count-in before the first note lands.
@@ -1309,7 +1345,7 @@
     ctx.restore();
   }
 
-  // A few-second solo where the notes stop so you can just watch him dance.
+  // Level-complete solo: notes stop so you can just watch him dance.
   function startBreak() {
     breakActive = true;
     breakEnd = AC.currentTime + 5.2;
@@ -1319,7 +1355,12 @@
   }
   function endBreak() {
     breakActive = false;
-    // note generation resumes on its own; notes lead back in over TRAVEL.
+    // the next, harder level begins
+    level++;
+    levelHits = 0;
+    levelTarget += 2;              // a touch more to clear each level
+    levelUpFlash = 1.6;            // "LEVEL X" announcement + speed-up flash
+    // notes resume on their own and lead back in over TRAVEL.
   }
 
   // ============================ FLOW ======================================
@@ -1330,7 +1371,8 @@
     notes = []; particles = []; rings = []; popups = []; spawnedSteps.clear();
     score = 0; combo = 0; maxCombo = 0; hype = 60; elapsed = 0; shake = 0; crowdHype = 0;
     dancer.pose = 0; dancer.energy = 0; dancer.pop = 0; dancer.flash = 0; lastNoteLane = -1;
-    breakActive = false; breakBeat = -1; nextBreakScore = 1500; breakGap = 6000;
+    breakActive = false; breakBeat = -1;
+    level = 1; levelHits = 0; levelTarget = 22; levelUpFlash = 0;
     state = 'playing';
     // start groove
     beatIndex = 0;
