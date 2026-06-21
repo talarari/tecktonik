@@ -289,7 +289,7 @@
   const HIT_Y = H - 130;          // y of the hit line (low, near the dancer's feet)
   const SPAWN_Y = 430;            // horizon / waterline / top of the play lanes
   const NOTE_TOP = 96;            // y where falling notes first appear (up high)
-  const TRAVEL = 2.15;            // seconds a note takes to fall (reaction time)
+  const TRAVEL_MAX = 2.05;        // start fall time; shrinks as it escalates
 
   // Note generation runs on its own clock, a full TRAVEL ahead of the audio
   // so notes fall the whole field instead of popping in near the hit line.
@@ -319,17 +319,27 @@
 
   document.getElementById('titleBest').textContent = best;
 
-  // Difficulty curve: gentle ramp. `sec` is seconds since the first note.
-  // Returns chance of adding an off-beat note. Kept low so it stays tappable.
+  // ---- Escalating difficulty (drives a fast-ending run) ----------------
+  // `elapsed` = seconds since the first note. Everything ramps with it:
+  // more notes, faster falls, harder drain, and smaller hype rewards.
   function densityAt(sec) {
-    return Math.min(0.55, 0.05 + sec * 0.0035);
+    return Math.min(0.95, 0.12 + sec * 0.011);     // far more notes over time
+  }
+  function curTravel() {
+    return Math.max(0.85, TRAVEL_MAX - elapsed * 0.017); // notes speed up
+  }
+  function hypeDrainRate() {
+    return 1.2 + elapsed * 0.03;                    // drain accelerates
+  }
+  function hypeGainMult() {
+    return Math.max(0.22, 1 - elapsed * 0.006);     // hits give less over time
   }
 
-  // Stream notes a full TRAVEL ahead of the current audio time so each one
-  // falls the whole field. Called every frame.
+  // Stream notes a TRAVEL ahead of the current audio time so each one falls
+  // the whole field. Called every frame.
   function generateNotes() {
     if (state !== 'playing' || !AC) return;
-    const horizon = AC.currentTime + TRAVEL + 0.25;
+    const horizon = AC.currentTime + TRAVEL_MAX + 0.25;
     while (noteTime < horizon) {
       decideNote(noteStep, noteTime);
       noteStep++;
@@ -359,16 +369,24 @@
     if (lane === lastNoteLane && Math.random() < 0.7) lane = (lane + 1) % LANES;
     lastNoteLane = lane;
     addNote(lane, t);
+
+    // Late game: simultaneous double-notes on strong beats crank the pressure.
+    const d = densityAt(sec);
+    if (onBeat && d > 0.55 && Math.random() < (d - 0.55) * 1.1) {
+      const l2 = (lane + 1 + ((Math.random() * (LANES - 1)) | 0)) % LANES;
+      addNote(l2, t);
+    }
   }
 
   function addNote(lane, hitTime) {
-    notes.push({ lane, hitTime, judged: false, y: NOTE_TOP, scale: 0, dead: false });
+    notes.push({ lane, hitTime, judged: false, y: NOTE_TOP, scale: 0, dead: false,
+                 travel: curTravel() });
   }
 
   // Map an AC time to the note's screen position (falls from NOTE_TOP to HIT_Y).
   function noteY(n, nowAC) {
     const dt = n.hitTime - nowAC;     // >0 means still falling
-    return NOTE_TOP + (HIT_Y - NOTE_TOP) * (1 - dt / TRAVEL);
+    return NOTE_TOP + (HIT_Y - NOTE_TOP) * (1 - dt / n.travel);
   }
 
   // ============================ INPUT =====================================
@@ -431,7 +449,7 @@
     const mult = 1 + Math.floor(combo / 10) * 0.5;
     score += Math.round(gain * mult);
     maxCombo = Math.max(maxCombo, combo);
-    hype = Math.min(100, hype + (quality === 2 ? 4.5 : 3.0));
+    hype = Math.min(100, hype + (quality === 2 ? 4.5 : 3.0) * hypeGainMult());
     comboFlash = 1;
     hitSfx(quality);
     dancer.poke(quality);
@@ -1182,8 +1200,8 @@
       }
 
       if (breakActive) {
-        // he solos: refill hype, no drain, run the Tecktonik choreography
-        hype = Math.min(100, hype + dt * 9);
+        // he solos: partial hype top-up (not a full reset), no drain
+        hype = Math.min(100, hype + dt * 5);
         crowdHype += (100 - crowdHype) * 0.06;
         const beat = Math.floor((AC.currentTime - audioStart) / SPB);
         if (beat !== breakBeat) {
@@ -1197,8 +1215,8 @@
         dancer.energy = 1;                // stay fully expressive
         if (AC.currentTime >= breakEnd) endBreak();
       } else if (!counting) {
-        // passive hype drain so you must keep hitting (gentle, slow ramp)
-        hype = Math.max(0, hype - dt * (0.9 + elapsed * 0.012));
+        // passive hype drain accelerates — you can't coast forever
+        hype = Math.max(0, hype - dt * hypeDrainRate());
         if (hype <= 0) { gameOver(); }
         crowdHype += ((combo > 8 ? 100 : hype) - crowdHype) * 0.05;
       }
