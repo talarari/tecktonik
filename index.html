@@ -35,21 +35,38 @@
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     text-align: center; color: #fff; z-index: 10;
     padding: 24px; gap: 18px;
-    background: radial-gradient(120% 80% at 50% 0%, rgba(255,120,180,0.25), rgba(6,16,24,0.78) 70%);
-    backdrop-filter: blur(2px);
+    background:
+      radial-gradient(90% 55% at 15% 100%, rgba(95,208,255,0.18), transparent 65%),
+      radial-gradient(90% 55% at 88% 96%, rgba(255,211,77,0.14), transparent 60%),
+      radial-gradient(120% 80% at 50% 0%, rgba(255,120,180,0.28), rgba(6,16,24,0.80) 70%);
+    backdrop-filter: blur(3px);
   }
   .hidden { display: none !important; }
   h1 {
     font-size: clamp(30px, 9vw, 56px); line-height: 1.0; font-weight: 900;
     letter-spacing: 1px;
-    background: linear-gradient(180deg,#fff,#ffd6ec 45%,#ff5fa8);
+    background: linear-gradient(110deg,#fff,#ffd6ec 25%,#ff5fa8 45%,#ffd34d 65%,#fff 85%);
+    background-size: 300% 100%;
     -webkit-background-clip: text; background-clip: text; color: transparent;
     text-shadow: 0 4px 24px rgba(255,95,168,0.5);
     transform: rotate(-3deg);
+    animation: shimmer 4s linear infinite;
+  }
+  @keyframes shimmer { to { background-position: -300% 0; } }
+  .floaters { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+  .floaters span {
+    position: absolute; font-size: 28px; opacity: .45;
+    filter: drop-shadow(0 6px 10px rgba(0,0,0,.35));
+    animation: floaty 6s ease-in-out infinite;
+  }
+  @keyframes floaty {
+    0%, 100% { transform: translateY(0) rotate(-8deg); }
+    50% { transform: translateY(-24px) rotate(8deg); }
   }
   .tag { font-size: clamp(13px,4vw,18px); opacity: .9; font-weight: 600; letter-spacing:.5px;}
   .btn {
     pointer-events: auto; cursor: pointer;
+    position: relative; overflow: hidden;
     font-size: clamp(18px,6vw,26px); font-weight: 900;
     color: #2a0a18;
     padding: 16px 40px; border: none; border-radius: 999px;
@@ -57,6 +74,12 @@
     box-shadow: 0 8px 0 #c2386f, 0 14px 30px rgba(0,0,0,.45);
     transform: translateY(0); transition: transform .06s, box-shadow .06s;
   }
+  .btn::after {
+    content: ''; position: absolute; top: 0; left: -60%; width: 40%; height: 100%;
+    background: linear-gradient(100deg, transparent, rgba(255,255,255,.55), transparent);
+    animation: sheen 2.8s ease-in-out infinite;
+  }
+  @keyframes sheen { 0% { left: -60%; } 55%, 100% { left: 130%; } }
   .btn:active { transform: translateY(6px); box-shadow: 0 2px 0 #c2386f, 0 6px 16px rgba(0,0,0,.45); }
   .btn2 {
     background: linear-gradient(180deg,#fff3,#fff0), linear-gradient(180deg,#7fe0ff,#5fa8ff);
@@ -83,6 +106,13 @@
 
   <!-- TITLE -->
   <div id="title" class="screen">
+    <div class="floaters" aria-hidden="true">
+      <span style="left:6%;top:14%">🌴</span>
+      <span style="left:84%;top:10%;animation-delay:-2s">🍹</span>
+      <span style="left:10%;top:74%;animation-delay:-4s">🕶️</span>
+      <span style="left:82%;top:70%;animation-delay:-1s">🏖️</span>
+      <span style="left:46%;top:86%;animation-delay:-3s">🎧</span>
+    </div>
     <div class="tag">🌴 LAS VEGAS POOL CLUB 🌴</div>
     <h1>POOL PARTY<br>DANCE-OFF</h1>
     <div class="how">
@@ -97,6 +127,12 @@
 
   <!-- GAME OVER -->
   <div id="over" class="screen hidden">
+    <div class="floaters" aria-hidden="true">
+      <span style="left:8%;top:12%;animation-delay:-1s">🪩</span>
+      <span style="left:84%;top:16%;animation-delay:-3s">🌴</span>
+      <span style="left:12%;top:76%;animation-delay:-5s">🎶</span>
+      <span style="left:80%;top:72%;animation-delay:-2s">🕺</span>
+    </div>
     <div class="tag">THE BEAT DROPPED OUT 💤</div>
     <div class="small">SCORE</div>
     <div class="big" id="finalScore">0</div>
@@ -314,6 +350,8 @@
   let shake = 0;
   let crowdHype = 0;              // smoothed visual hype
   let comboFlash = 0;
+  let gBeat = 0;                  // continuous beat phase (in beats)
+  let beatPulse = 0;              // punchy 1->0 decay within each beat
 
   // Spawn bookkeeping
   let spawnedSteps = new Set();
@@ -571,12 +609,28 @@
     ctx.fillStyle = sky;
     ctx.fillRect(0, 0, W, SPAWN_Y + 6);
 
-    // Sun flare upper-right
+    // Sun upper-right: slow-turning rays, warm flare, bright disc
+    ctx.save();
+    ctx.translate(330, 54); ctx.rotate(t * 0.06);
+    ctx.fillStyle = 'rgba(255,246,200,0.18)';
+    for (let i = 0; i < 12; i++) {
+      ctx.rotate(Math.PI / 6);
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-8, -52); ctx.lineTo(8, -52);
+      ctx.closePath(); ctx.fill();
+    }
+    ctx.restore();
     const sun = ctx.createRadialGradient(330, 54, 4, 330, 54, 150);
     sun.addColorStop(0, 'rgba(255,252,235,0.95)');
     sun.addColorStop(0.4, 'rgba(255,250,225,0.35)');
     sun.addColorStop(1, 'rgba(255,250,225,0)');
     ctx.fillStyle = sun; ctx.fillRect(120, 0, W - 120, 220);
+    ctx.fillStyle = '#fffdf0';
+    ctx.beginPath(); ctx.arc(330, 54, 20, 0, 7); ctx.fill();
+
+    // Puffy clouds drifting across the sky (front of the sun for depth)
+    drawCloud(((t * 7 + 40) % (W + 200)) - 100, 66, 1.0);
+    drawCloud(((t * 11 + 260) % (W + 200)) - 100, 126, 0.65);
+    drawCloud(((t * 15 + 470) % (W + 200)) - 100, 34, 0.5);
 
     // Palms rising from the horizon, framing the hero
     drawPalm(38, SPAWN_Y, 0.60, t, 1.4, false);
@@ -590,6 +644,20 @@
     band.addColorStop(1, '#cbb48f');
     ctx.fillStyle = band;
     ctx.fillRect(0, SPAWN_Y - 34, W, 38);
+    // hazy Vegas skyline flanking the party (centre stays clear for the hero)
+    ctx.fillStyle = 'rgba(148,190,214,0.8)';
+    for (const [bx, bh, bw] of SKYLINE) ctx.fillRect(bx, SPAWN_Y - 34 - bh, bw, bh);
+    ctx.fillStyle = 'rgba(120,165,192,0.75)';
+    for (const [bx, bh, bw] of SKYLINE) ctx.fillRect(bx + bw - 4, SPAWN_Y - 34 - bh, 4, bh);
+    // sun glinting off the tower windows
+    ctx.fillStyle = 'rgba(255,244,200,0.85)';
+    for (let i = 0; i < 16; i++) {
+      const b = SKYLINE[i % SKYLINE.length];
+      if (Math.sin(t * 1.5 + i * 2.1) < 0.3) continue;
+      const wx = b[0] + 3 + ((i * 37) % Math.max(1, b[2] - 7));
+      const wy = SPAWN_Y - 40 - ((i * 23) % Math.max(1, b[1] - 8));
+      ctx.fillRect(wx, wy, 2.5, 3.5);
+    }
     // distant building blocks
     ctx.fillStyle = 'rgba(208,192,162,0.9)';
     ctx.fillRect(0, SPAWN_Y - 44, 76, 14); ctx.fillRect(298, SPAWN_Y - 46, 94, 16);
@@ -597,6 +665,9 @@
     // Cabana umbrellas (cream w/ red scalloped trim)
     drawUmbrella(64, SPAWN_Y - 24, 0.78, t, 0.4);
     drawUmbrella(326, SPAWN_Y - 26, 0.84, t, 1.1);
+
+    // Festival string lights swaying over the party, blinking on the beat
+    drawLights(t);
 
     // Crowd dancing behind the hero
     drawCrowd(t);
@@ -623,6 +694,25 @@
       ctx.stroke();
     }
     ctx.globalAlpha = 1;
+
+    // sun-glints twinkling on the water
+    ctx.fillStyle = '#eafaff';
+    for (const sp of GLINTS) {
+      const tw = Math.sin(t * sp.sp * 2 + sp.ph);
+      if (tw <= 0.2) continue;
+      const a = (tw - 0.2) / 0.8, r = 1.6 + a * 2.6;
+      ctx.globalAlpha = a * 0.7;
+      ctx.beginPath();
+      ctx.moveTo(sp.x, sp.y - r); ctx.quadraticCurveTo(sp.x, sp.y, sp.x + r, sp.y);
+      ctx.quadraticCurveTo(sp.x, sp.y, sp.x, sp.y + r);
+      ctx.quadraticCurveTo(sp.x, sp.y, sp.x - r, sp.y);
+      ctx.quadraticCurveTo(sp.x, sp.y, sp.x, sp.y - r);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // pool toys bobbing at the water's edge
+    drawFloats(t);
 
     // soft sunny warm overlay over the sky/scene
     ctx.globalAlpha = 0.06; ctx.fillStyle = '#ffdf9a';
@@ -719,6 +809,85 @@
     // finial
     ctx.fillStyle = '#cdbf9f';
     ctx.beginPath(); ctx.arc(0, -R * 0.8, 2.6, 0, 7); ctx.fill();
+    ctx.restore();
+  }
+
+  // [x, height, width] towers left + right of the party, none in the centre
+  const SKYLINE = [
+    [0, 26, 34], [30, 42, 22], [56, 22, 30], [88, 34, 26],
+    [252, 30, 26], [280, 48, 24], [306, 26, 40], [336, 38, 30], [364, 22, 26],
+  ];
+
+  // twinkling glint field on the pool (positions fixed per load)
+  const GLINTS = [];
+  for (let i = 0; i < 24; i++) {
+    GLINTS.push({ x: 10 + Math.random() * (W - 20),
+                  y: SPAWN_Y + 26 + Math.random() * (H - SPAWN_Y - 100),
+                  ph: Math.random() * 7, sp: 0.5 + Math.random() * 1.2 });
+  }
+
+  function drawCloud(x, y, s) {
+    ctx.save(); ctx.translate(x, y); ctx.scale(s, s);
+    ctx.fillStyle = 'rgba(255,255,255,0.92)';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 30, 13, 0, 0, 7);
+    ctx.ellipse(-20, 4, 18, 9, 0, 0, 7);
+    ctx.ellipse(22, 4, 20, 10, 0, 0, 7);
+    ctx.ellipse(6, -8, 18, 10, 0, 0, 7);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(180,215,238,0.5)';                 // soft underside
+    ctx.beginPath(); ctx.ellipse(2, 8, 26, 5, 0, 0, 7); ctx.fill();
+    ctx.restore();
+  }
+
+  const BULB_COLS = ['#ff5fa8', '#ffd34d', '#5fd0ff', '#9bff6b'];
+  function drawLights(t) {
+    const strands = [ { y: 96, sag: 48, n: 10, ph: 0 }, { y: 152, sag: 64, n: 12, ph: 3 } ];
+    for (const s of strands) {
+      const cx = W / 2 + Math.sin(t * 0.9 + s.ph) * 6, cy = s.y + s.sag;
+      ctx.strokeStyle = 'rgba(24,44,56,0.5)'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(-8, s.y);
+      ctx.quadraticCurveTo(cx, cy, W + 8, s.y); ctx.stroke();
+      for (let i = 0; i < s.n; i++) {
+        const u = (i + 0.5) / s.n, v = 1 - u;         // point on the bezier
+        const bx = v * v * -8 + 2 * v * u * cx + u * u * (W + 8);
+        const by = v * v * s.y + 2 * v * u * cy + u * u * s.y + 5;
+        const col = BULB_COLS[(i + s.ph) % BULB_COLS.length];
+        const lit = 0.4 + 0.6 * Math.max(0, Math.sin(gBeat * Math.PI + i * 1.3)) * (0.4 + beatPulse * 0.6);
+        ctx.save();
+        ctx.globalAlpha = lit;
+        ctx.shadowColor = col; ctx.shadowBlur = 7 + beatPulse * 8;
+        ctx.fillStyle = col;
+        ctx.beginPath(); ctx.arc(bx, by, 3.4, 0, 7); ctx.fill();
+        ctx.restore();
+      }
+    }
+  }
+
+  function drawFloats(t) {
+    // flamingo floatie drifting left of the lanes
+    const bobL = Math.sin(t * 1.3) * 3;
+    ctx.save(); ctx.translate(42, SPAWN_Y + 44 + bobL);
+    ctx.rotate(Math.sin(t * 1.3 + 1) * 0.06);
+    ctx.strokeStyle = '#ff8fb8'; ctx.lineWidth = 9;
+    ctx.beginPath(); ctx.ellipse(0, 6, 20, 9, 0, 0, 7); ctx.stroke();
+    ctx.strokeStyle = '#ff7aab'; ctx.lineWidth = 5; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(14, 2); ctx.quadraticCurveTo(25, -18, 15, -24); ctx.stroke();
+    ctx.fillStyle = '#ff7aab';
+    ctx.beginPath(); ctx.arc(13, -24, 4.5, 0, 7); ctx.fill();
+    ctx.fillStyle = '#2b2b2b';                               // beak
+    ctx.beginPath(); ctx.moveTo(9, -24); ctx.lineTo(3, -21); ctx.lineTo(9, -20.5); ctx.closePath(); ctx.fill();
+    ctx.restore();
+
+    // candy-striped donut float on the right
+    const bobR = Math.sin(t * 1.1 + 2) * 3;
+    ctx.save(); ctx.translate(348, SPAWN_Y + 52 + bobR);
+    ctx.rotate(Math.sin(t * 1.1) * 0.06);
+    ctx.strokeStyle = '#ffd34d'; ctx.lineWidth = 10;
+    ctx.beginPath(); ctx.ellipse(0, 0, 19, 10, 0, 0, 7); ctx.stroke();
+    ctx.strokeStyle = '#ff5fa8'; ctx.setLineDash([8, 12]);
+    ctx.beginPath(); ctx.ellipse(0, 0, 19, 10, 0, 0, 7); ctx.stroke();
+    ctx.setLineDash([]);
     ctx.restore();
   }
 
@@ -996,11 +1165,16 @@
       const x = 12 + lw * l;
       ctx.fillStyle = l % 2 ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.08)';
       ctx.fillRect(x, SPAWN_Y, lw, H - SPAWN_Y);
-      ctx.strokeStyle = 'rgba(255,255,255,0.10)'; ctx.lineWidth = 1;
+    }
+    // rails brighten as they approach the hit line
+    const g = ctx.createLinearGradient(0, SPAWN_Y, 0, HIT_Y);
+    g.addColorStop(0, 'rgba(255,255,255,0.05)');
+    g.addColorStop(1, 'rgba(255,255,255,0.30)');
+    ctx.strokeStyle = g; ctx.lineWidth = 1.4;
+    for (let l = 0; l <= LANES; l++) {
+      const x = 12 + lw * l;
       ctx.beginPath(); ctx.moveTo(x, SPAWN_Y); ctx.lineTo(x, H); ctx.stroke();
     }
-    ctx.strokeStyle = 'rgba(255,255,255,0.10)';
-    ctx.beginPath(); ctx.moveTo(12 + lw * LANES, SPAWN_Y); ctx.lineTo(12 + lw * LANES, H); ctx.stroke();
   }
 
   // Hit line, target rings, lane flashes and the falling notes — drawn IN
@@ -1020,20 +1194,24 @@
       }
     }
 
-    // HIT LINE with glow
+    // HIT LINE with glow — breathes with the beat
     ctx.save();
-    ctx.shadowColor = '#fff'; ctx.shadowBlur = 16;
-    ctx.strokeStyle = 'rgba(255,255,255,0.92)'; ctx.lineWidth = 3;
+    ctx.shadowColor = '#fff'; ctx.shadowBlur = 14 + beatPulse * 16;
+    ctx.strokeStyle = 'rgba(255,255,255,0.92)'; ctx.lineWidth = 3 + beatPulse * 1.6;
     ctx.beginPath(); ctx.moveTo(12, HIT_Y); ctx.lineTo(12 + lw * LANES, HIT_Y); ctx.stroke();
     ctx.restore();
-    // hit target rings
+    // hit target rings — pop on every kick
     for (let l = 0; l < LANES; l++) {
       const x = laneX(l);
+      const rr = 24 + beatPulse * 2.5;
+      ctx.save();
+      ctx.shadowColor = laneColors[l]; ctx.shadowBlur = 5 + beatPulse * 10;
       ctx.strokeStyle = laneColors[l]; ctx.lineWidth = 3;
       ctx.globalAlpha = 0.95;
-      ctx.beginPath(); ctx.arc(x, HIT_Y, 24, 0, 7); ctx.stroke();
+      ctx.beginPath(); ctx.arc(x, HIT_Y, rr, 0, 7); ctx.stroke();
+      ctx.restore();
       ctx.globalAlpha = 0.2; ctx.fillStyle = laneColors[l];
-      ctx.beginPath(); ctx.arc(x, HIT_Y, 22, 0, 7); ctx.fill();
+      ctx.beginPath(); ctx.arc(x, HIT_Y, rr - 2, 0, 7); ctx.fill();
       ctx.globalAlpha = 1;
     }
 
@@ -1042,20 +1220,31 @@
       const y = noteY(n, nowAC);
       n.scale = Math.min(1, n.scale + 0.12);
       const x = laneX(n.lane);
-      const r = 22 * n.scale;
-      // trail
-      ctx.globalAlpha = 0.25;
-      ctx.fillStyle = laneGlow[n.lane];
-      ctx.beginPath(); ctx.ellipse(x, y - 14, r * 0.7, r * 1.5, 0, 0, 7); ctx.fill();
+      const prox = 1 - Math.min(1, Math.abs(n.hitTime - nowAC) / 0.6); // hotter near the line
+      const r = (22 + beatPulse * 1.5) * n.scale;
+      // comet trail
+      const tg = ctx.createLinearGradient(x, y - r * 4.2, x, y);
+      tg.addColorStop(0, 'rgba(255,255,255,0)');
+      tg.addColorStop(1, laneGlow[n.lane]);
+      ctx.globalAlpha = 0.3;
+      ctx.fillStyle = tg;
+      ctx.beginPath(); ctx.ellipse(x, y - r * 2.1, r * 0.55, r * 2.1, 0, 0, 7); ctx.fill();
       ctx.globalAlpha = 1;
       // body
       ctx.save();
-      ctx.shadowColor = laneColors[n.lane]; ctx.shadowBlur = 14;
+      ctx.shadowColor = laneColors[n.lane]; ctx.shadowBlur = 12 + prox * 16;
       const g = ctx.createRadialGradient(x - 6, y - 6, 2, x, y, r);
       g.addColorStop(0, '#fff'); g.addColorStop(0.4, laneGlow[n.lane]); g.addColorStop(1, laneColors[n.lane]);
       ctx.fillStyle = g;
       ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
+      // crisp rim
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = 'rgba(255,255,255,0.8)'; ctx.lineWidth = 1.6;
+      ctx.beginPath(); ctx.arc(x, y, r - 0.8, 0, 7); ctx.stroke();
       ctx.restore();
+      // glossy shine
+      ctx.fillStyle = 'rgba(255,255,255,0.7)';
+      ctx.beginPath(); ctx.ellipse(x - r * 0.35, y - r * 0.42, r * 0.22, r * 0.13, -0.6, 0, 7); ctx.fill();
       // music-note icon
       ctx.fillStyle = 'rgba(0,0,0,0.45)';
       ctx.font = `${Math.round(20 * n.scale)}px sans-serif`;
@@ -1130,12 +1319,19 @@
 
   // ============================ HUD =======================================
   function drawHUD() {
-    // top translucent bar
-    ctx.fillStyle = 'rgba(6,16,24,0.28)';
+    // top glass bar with a hairline glow at its base
+    const hb = ctx.createLinearGradient(0, 0, 0, 64);
+    hb.addColorStop(0, 'rgba(6,16,24,0.55)');
+    hb.addColorStop(1, 'rgba(6,16,24,0.10)');
+    ctx.fillStyle = hb;
     ctx.fillRect(0, 0, W, 64);
+    ctx.fillStyle = 'rgba(255,255,255,0.14)';
+    ctx.fillRect(0, 63, W, 1);
 
-    // score
-    ctx.fillStyle = '#fff';
+    // score — white fading to gold
+    const sg = ctx.createLinearGradient(0, 12, 0, 40);
+    sg.addColorStop(0, '#fff'); sg.addColorStop(1, '#ffd98a');
+    ctx.fillStyle = sg;
     ctx.font = '900 30px Trebuchet MS, sans-serif';
     ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
     ctx.strokeStyle = 'rgba(0,0,0,.45)'; ctx.lineWidth = 4;
@@ -1183,6 +1379,13 @@
     ctx.save();
     roundRectPath(mx, my, mw, mh, 8); ctx.clip();
     ctx.fillStyle = hg; ctx.fillRect(mx, my, mw * (hype / 100), mh);
+    // sweeping shine across the filled bar
+    const shx = mx - 20 + ((elapsed * 55) % (mw + 40));
+    const sh = ctx.createLinearGradient(shx - 9, 0, shx + 9, 0);
+    sh.addColorStop(0, 'rgba(255,255,255,0)');
+    sh.addColorStop(0.5, 'rgba(255,255,255,0.55)');
+    sh.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = sh; ctx.fillRect(shx - 9, my, 18, mh);
     // low-hype warning pulse
     if (hype < 25) {
       ctx.fillStyle = `rgba(255,40,60,${0.25 + 0.25 * Math.sin(elapsed * 12)})`;
@@ -1201,6 +1404,10 @@
     const tSec = ms / 1000;
     let dt = lastTime ? Math.min(0.05, tSec - lastTime) : 0.016;
     lastTime = tSec;
+
+    // beat phase drives all the pulsing visuals (lights, rings, glow)
+    gBeat = AC ? Math.max(0, (AC.currentTime - audioStart) / SPB) : tSec / SPB;
+    beatPulse = Math.exp(-4 * (gBeat % 1));
 
     const counting = state === 'playing' && AC && AC.currentTime < spawnGate;
     if (state === 'playing') {
@@ -1270,16 +1477,57 @@
     if (counting) drawCountIn(AC.currentTime);
     if (breakActive) drawBreakBanner(nowAC);
     if (levelUpFlash > 0 && !breakActive) drawLevelUp();
+
+    // ---- post FX ----
+    // soft vignette keeps the eye centre-stage
+    const vg = ctx.createRadialGradient(W / 2, H * 0.46, H * 0.34, W / 2, H * 0.52, H * 0.82);
+    vg.addColorStop(0, 'rgba(0,0,0,0)');
+    vg.addColorStop(1, 'rgba(3,10,18,0.30)');
+    ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
+    // party glow bleeds in from the edges as the crowd heats up
+    if (state === 'playing' && !breakActive && crowdHype > 60) {
+      const k = (crowdHype - 60) / 40;
+      const hue = (gBeat * 45) % 360;
+      const a = k * (0.05 + beatPulse * 0.10);
+      const gl = ctx.createLinearGradient(0, 0, W, 0);
+      gl.addColorStop(0, `hsla(${hue},100%,65%,${a})`);
+      gl.addColorStop(0.25, 'hsla(0,0%,0%,0)');
+      gl.addColorStop(0.75, 'hsla(0,0%,0%,0)');
+      gl.addColorStop(1, `hsla(${(hue + 120) % 360},100%,65%,${a})`);
+      ctx.fillStyle = gl; ctx.fillRect(0, 0, W, H);
+    }
+    // white pop the instant a new level kicks in
+    if (levelUpFlash > 1.25 && !breakActive) {
+      ctx.fillStyle = `rgba(255,255,255,${(levelUpFlash - 1.25) / 0.35 * 0.5})`;
+      ctx.fillRect(0, 0, W, H);
+    }
     ctx.restore();
   }
   requestAnimationFrame(frame);
 
-  // Gentle vignette so the eye settles on the dancer during his solo.
+  // Showtime staging: vignette the scene, then sweep club beams over the solo.
   function drawSpotlight() {
     const g = ctx.createRadialGradient(W / 2, HIT_Y - 150, 60, W / 2, HIT_Y - 150, 320);
     g.addColorStop(0, 'rgba(8,20,30,0)');
-    g.addColorStop(1, 'rgba(6,14,22,0.34)');
+    g.addColorStop(1, 'rgba(6,14,22,0.45)');
     ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < 3; i++) {
+      const a = Math.sin(gBeat * 0.9 + i * 2.1) * 0.7;
+      const hue = (gBeat * 40 + i * 120) % 360;
+      ctx.save();
+      ctx.translate(W / 2 + (i - 1) * 120, 60);
+      ctx.rotate(a);
+      const bg = ctx.createLinearGradient(0, 0, 0, 560);
+      bg.addColorStop(0, `hsla(${hue},100%,70%,${0.20 + beatPulse * 0.08})`);
+      bg.addColorStop(1, `hsla(${hue},100%,70%,0)`);
+      ctx.fillStyle = bg;
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-46, 560); ctx.lineTo(46, 560);
+      ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }
+    ctx.restore();
   }
 
   // "LEVEL X COMPLETE" banner shown during the level-clear break.
